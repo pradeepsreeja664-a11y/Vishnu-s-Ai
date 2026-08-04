@@ -2,9 +2,12 @@ import streamlit as st
 from google import genai
 import os
 import pypdf
+import docx
+from io import BytesIO
+from gtts import gTTS
 
 # 1. Page Configuration
-st.set_page_config(page_title="SSLC Study Helper 📚", page_icon="📚", layout="centered")
+st.set_page_config(page_title=" Vishnu's SSLC AI Master 📚", page_icon="🎓", layout="centered")
 
 # 2. 20 Ultra Premium Themes Palette
 THEMES = {
@@ -32,19 +35,14 @@ THEMES = {
 
 # 3. Sidebar Theme Selection
 st.sidebar.title("🎨 Theme Selector")
-selected_theme_name = st.sidebar.selectbox("20 പ്രീമിയം തീമുകളിൽ നിന്ന് ഒന്ന് തിരഞ്ഞെടുക്കുക:", list(THEMES.keys()))
+selected_theme_name = st.sidebar.selectbox("20 പ്രീമിയം തീമുകളിൽ നിന്ന് തിരഞ്ഞെടുക്കുക:", list(THEMES.keys()))
 current_theme = THEMES[selected_theme_name]
 
-# Dynamic CSS Injection for Ultra Premium UI
+# Dynamic CSS Injection
 st.markdown(f"""
     <style>
-    .stApp {{
-        background-color: {current_theme['bg']} !important;
-        color: {current_theme['text']} !important;
-    }}
-    .stApp, p, span, div, label, h1, h2, h3, h4 {{
-        color: {current_theme['text']} !important;
-    }}
+    .stApp {{ background-color: {current_theme['bg']} !important; color: {current_theme['text']} !important; }}
+    .stApp, p, span, div, label, h1, h2, h3, h4 {{ color: {current_theme['text']} !important; }}
     .main-card {{
         background-color: {current_theme['card']};
         border: 1px solid {current_theme['border']};
@@ -60,12 +58,7 @@ st.markdown(f"""
         border-radius: 12px !important;
         padding: 12px 24px !important;
         font-weight: 700 !important;
-        width: 100%;
         transition: all 0.3s ease;
-    }}
-    .stButton>button:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px {current_theme['accent']}80;
     }}
     .stTextInput>div>div>input, .stTextArea>div>div>textarea {{
         background-color: {current_theme['card']} !important;
@@ -77,16 +70,27 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Main UI Header
-st.markdown(f"<h1 style='text-align: center; color: {current_theme['accent']};'>SSLC Study Helper 📚</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; opacity: 0.8;'>പഠനം ഉഷാറാക്കാം! നിങ്ങളുടെ ചോദ്യങ്ങൾ ചോദിക്കുക അല്ലെങ്കിൽ നോട്ട്സ് PDF അപ്‌ലോഡ് ചെയ്യുക.</p>", unsafe_allow_html=True)
+st.markdown(f"<h1 style='text-align: center; color: {current_theme['accent']};'>SSLC AI Master 🎓</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; opacity: 0.8;'>നോട്ട്സ് അപ്‌ലോഡ് ചെയ്യുക, വായിക്കുക, കേൾക്കുക, Doc ആയി ഡൗൺലോഡ് ചെയ്യുക!</p>", unsafe_allow_html=True)
 
-# Helper Function for PDF Processing
+# Helper Functions
 def extract_text_from_pdf(pdf_file):
     reader = pypdf.PdfReader(pdf_file)
-    extracted_text = ""
-    for page in reader.pages:
-        extracted_text += page.extract_text() or ""
-    return extracted_text
+    return "".join([page.extract_text() or "" for page in reader.pages])
+
+def create_docx(text):
+    doc = docx.Document()
+    doc.add_heading('SSLC Study Notes', 0)
+    doc.add_paragraph(text)
+    bio = BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
+
+def create_audio(text):
+    tts = gTTS(text=text, lang='ml')
+    bio = BytesIO()
+    tts.write_to_fp(bio)
+    return bio.getvalue()
 
 # API Key Validation
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -98,7 +102,6 @@ else:
 
     st.markdown("<div class='main-card'>", unsafe_allow_html=True)
     
-    # PDF Upload Input
     uploaded_pdf = st.file_uploader("📄 പാഠപുസ്തകം അല്ലെങ്കിൽ നോട്ട്സ് (PDF) അപ്‌ലോഡ് ചെയ്യാം (Optional):", type=["pdf"])
     
     pdf_text = ""
@@ -109,27 +112,57 @@ else:
         except Exception as e:
             st.error(f"PDF വായിക്കുന്നതിൽ തടസ്സം: {e}")
 
-    # Text Input
-    user_input = st.text_area("നിങ്ങളുടെ ചോദ്യം അല്ലെങ്കിൽ വിഷയം ഇവിടെ നൽകുക:", placeholder="ഉദാഹരണത്തിന്: Photosynthesis എന്നാൽ എന്ത്?")
+    user_input = st.text_area("നിങ്ങളുടെ ചോദ്യം അല്ലെങ്കിൽ വിഷയം ഇവിടെ നൽകുക:", placeholder="ഉദാഹരണത്തിന്: എന്താണ് Photosynthesis?")
     st.markdown("</div>", unsafe_allow_html=True)
 
     if st.button("ഉത്തരം കണ്ടെത്തുക 🚀"):
         if user_input or pdf_text:
             combined_input = user_input
             if pdf_text:
-                combined_input += f"\n\nContext from Uploaded PDF Content:\n{pdf_text[:4000]}" # Passing extracted PDF text context
+                combined_input += f"\n\nContext from PDF:\n{pdf_text[:4000]}"
 
-            prompt = f"Act as an expert Kerala SSLC teacher with strong knowledge of the school syllabus. Use English words that are simple but get full marks if written. Explain the topic in a simple, accurate, and student-friendly way in both ENGLISH and MALAYALAM. Use plain language that is easy to understand for SSLC students. Follow this format for every point: First write the ENGLISH point clearly. Immediately below it, write the MALAYALAM translation of the same point. Keep the explanation well organized, complete, and easy to study. Use short sentences, direct wording, and exam-friendly language. Do not use complex formatting, markdown, tables, symbols, or LaTeX. Do not use unnecessary decoration. Keep everything in plain text so it looks clean in basic text output. If the topic has multiple ideas, explain them point by point in the same pattern: ENGLISH point MALAYALAM point Make sure the meaning stays accurate in both languages. If needed, simplify difficult terms without changing the concept. Focus on clarity, correctness, and student usefulness. Insert the user’s topic and PDF context here: {combined_input}"
+            prompt = f"Act as an expert Kerala SSLC teacher. Explain the topic in a simple, accurate, and student-friendly way. Follow this format: First write the ENGLISH point clearly. Immediately below it, write the MALAYALAM translation. Keep it organized, complete, and easy to study. Do not use complex markdown or tables. Keep it in plain text. Focus on clarity. Topic: {combined_input}"
 
-            with st.spinner('ഉത്തരം തയ്യാറാക്കുന്നു...'):
+            with st.spinner('AI ഉത്തരം തയ്യാറാക്കുന്നു...'):
                 try:
                     response = client.models.generate_content(
                         model='gemini-3.6-flash',
                         contents=prompt
                     )
-                    st.success("ഉത്തരം ലഭിച്ചു!")
+                    
+                    st.success("✅ ഉത്തരം ലഭിച്ചു!")
+                    
+                    # Display Answer
                     st.write(response.text)
+                    
+                    st.markdown("---")
+                    st.markdown(f"<h3 style='color: {current_theme['accent']};'>🛠️ Smart Actions</h3>", unsafe_allow_html=True)
+                    
+                    # Smart Action Buttons (Copy, Download Doc, Audio)
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # 1. Download as Doc (Google Docs / Word)
+                        st.download_button(
+                            label="📄 Download as Google Doc / Word",
+                            data=create_docx(response.text),
+                            file_name="SSLC_AI_Notes.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                        
+                        # 2. Audio Feature
+                        with st.spinner("ഓഡിയോ തയ്യാറാക്കുന്നു..."):
+                            audio_bytes = create_audio(response.text)
+                            st.audio(audio_bytes, format='audio/mp3')
+                            st.caption("🎧 ഈ ഉത്തരം കേൾക്കാം")
+
+                    with col2:
+                        # 3. Easy Copy Feature
+                        with st.expander("📝 ഉത്തരം കോപ്പി ചെയ്യാൻ ഇവിടെ ക്ലിക്ക് ചെയ്യുക"):
+                            st.code(response.text, language='text')
+                            st.caption("മുകളിലെ വലതുവശത്തെ ഐക്കണിൽ ക്ലിക്ക് ചെയ്താൽ ഉത്തരം കോപ്പി ആകും.")
+                            
                 except Exception as e:
-                    st.error(f"ഒരു പ്രശ്നമുണ്ട്. കാരണം ഇതാണ്: {e}")
+                    st.error(f"ഒരു പ്രശ്നമുണ്ട്: {e}")
         else:
             st.warning("ദയവായി ചോദ്യം ടൈപ്പ് ചെയ്യുകയോ PDF അപ്‌ലോഡ് ചെയ്യുകയോ ചെയ്യുക!")
