@@ -12,14 +12,30 @@ from streamlit_mic_recorder import speech_to_text
 st.set_page_config(page_title="SSLC AI Study Buddy", page_icon="🎓", layout="wide")
 
 # ---------------------------------------------------------
-# 2. API Configuration (Secure & Updated Model)
+# 2. API Configuration (Auto-Detect Working Model)
 # ---------------------------------------------------------
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"].strip()
     genai.configure(api_key=GEMINI_API_KEY)
     
-    # 404 Error ഒഴിവാക്കാൻ ആധുനിക മോഡൽ ഉപയോഗിക്കുന്നു
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    # 404 NotFound എറർ തടയാൻ സ്വയം പ്രവർത്തിക്കുന്ന മോഡൽ കണ്ടെത്തുന്ന ഫംഗ്ഷൻ
+    def get_working_model():
+        try:
+            available_models = [
+                m.name for m in genai.list_models() 
+                if 'generateContent' in m.supported_generation_methods
+            ]
+            for pref in ['models/gemini-1.5-flash', 'models/gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']:
+                if pref in available_models:
+                    return genai.GenerativeModel(pref)
+            if available_models:
+                return genai.GenerativeModel(available_models[0])
+        except Exception:
+            pass
+        return genai.GenerativeModel('gemini-1.5-flash')
+
+    model = get_working_model()
+
 except Exception as e:
     st.error("⚠️ Gemini API Key കണ്ടെത്താനായില്ല! Streamlit Cloud Secrets-ൽ 'GEMINI_API_KEY' ഉണ്ടെന്ന് ഉറപ്പാക്കുക.")
     st.stop()
