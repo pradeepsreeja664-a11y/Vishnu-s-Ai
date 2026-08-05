@@ -97,17 +97,13 @@ def create_audio_improved(text):
     os.remove(audio_file_path)
     return audio_bytes
 
-# --- API Configuration ---API Key സെറ്റ് ചെയ്യുക (st.secrets വഴി സുരക്ഷിതമായി നൽകാം)
-import streamlit as st
-import google.generativeai as genai
-
-# Streamlit Secrets-ൽ നിന്നുള്ള കീ എടുക്കുന്നു
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-
+# --- API Configuration ---
+# API Key സെറ്റ് ചെയ്യുക (st.secrets വഴി സുരക്ഷിതമായി നൽകാം)
+GEMINI_API_KEY = "YOUR_GEMINI_API_KEY" # Replace with st.secrets["GEMINI_API_KEY"] on Streamlit Cloud
 genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-# ശരിയായ മോഡൽ നാമം നൽകുക
-model = genai.GenerativeModel('gemini-2.0-flash') 
+
 # --- Sidebar Navigation & Settings ---
 st.sidebar.title("📌 മെനു")
 app_mode = st.sidebar.radio(
