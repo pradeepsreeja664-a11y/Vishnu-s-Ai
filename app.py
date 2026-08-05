@@ -102,12 +102,17 @@ def create_audio_improved(text):
 # --- API Configuration ---
 try:
     # .strip() നൽകുന്നത് വഴി അനാവശ്യ സ്പേസുകൾ ഒഴിവാകും
+    # --- API Configuration ---
+try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"].strip()
     genai.configure(api_key=GEMINI_API_KEY)
+    
+    # 404 എറർ ഒഴിവാക്കാൻ updated model പേര് നൽകുന്നു
+    model = genai.GenerativeModel('gemini-2.0-flash')
+
 except Exception as e:
     st.error("⚠️ Gemini API Key കണ്ടെത്താനായില്ല! Streamlit Secrets പരിശോധിക്കുക.")
-model = genai.GenerativeModel('gemini-1.5-flash')
-
+    st.stop()  # API Key ഇല്ലെങ്കിൽ ആപ്പ് ഇവിടെ വെച്ച് നിക്കും
 
 # --- Sidebar Navigation & Settings ---
 st.sidebar.title("📌 മെനു")
