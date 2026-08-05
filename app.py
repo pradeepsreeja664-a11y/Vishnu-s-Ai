@@ -12,7 +12,7 @@ import edge_tts
 import tempfile
 
 # 1. Page Configuration
-st.set_page_config(page_title="SSLC AI Master 📚", page_icon="🎓", layout="wide")
+st.set_page_config(page_title="VISHNU'S SSLC AI MASTER 📚", page_icon="🎓", layout="wide")
 
 # --- Database Setup for Chat History ---
 def init_db():
