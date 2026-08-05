@@ -1,280 +1,50 @@
-import streamlit as st
-import google.generativeai as genai
-import os
-import pypdf
-import docx
-from io import BytesIO
-import sqlite3
-import re
-import requests
-import asyncio
-import edge_tts
-import tempfile
-from PIL import Image
-from youtube_transcript_api import YouTubeTranscriptApi
 import json
 import urllib.parse
+import streamlit as st
+import google.generativeai as genai
+from PIL import Image
+from youtube_transcript_api import YouTubeTranscriptApi
 from streamlit_mic_recorder import speech_to_text
 
-# 1. Page Configuration
-st.set_page_config(page_title="SSLC AI Master 📚", page_icon="🎓", layout="wide")
+# ---------------------------------------------------------
+# 1. Page Configuration (Must be the first Streamlit command)
+# ---------------------------------------------------------
+st.set_page_config(page_title="SSLC AI Study Buddy", page_icon="🎓", layout="wide")
 
-# --- Database Setup for Chat History ---
-def init_db():
-    conn = sqlite3.connect('chat_history.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS history
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, topic TEXT, prompt TEXT, response TEXT)''')
-    conn.commit()
-    return conn
-
-conn = init_db()
-
-def save_chat(email, topic, prompt, response):
-    c = conn.cursor()
-    c.execute("INSERT INTO history (email, topic, prompt, response) VALUES (?, ?, ?, ?)", (email, topic, prompt, response))
-    conn.commit()
-
-def get_history(email):
-    c = conn.cursor()
-    c.execute("SELECT id, topic, prompt, response FROM history WHERE email = ? ORDER BY id DESC", (email,))
-    return c.fetchall()
-
-# 2. Themes Palette
-THEMES = {
-    "1. Ultra Dark Premium": {"bg": "#0B0F19", "card": "#111827", "text": "#F9FAFB", "accent": "#6366F1", "border": "#1F2937"},
-    "2. Glassmorphism Navy": {"bg": "#0F172A", "card": "#1E293B", "text": "#F8FAFC", "accent": "#38BDF8", "border": "#334155"},
-    "3. Neon Cyberpunk": {"bg": "#0D0221", "card": "#1A0836", "text": "#00F5D4", "accent": "#FF007F", "border": "#7B2CBF"},
-    "4. Classic Light": {"bg": "#F8FAFC", "card": "#FFFFFF", "text": "#0F172A", "accent": "#2563EB", "border": "#E2E8F0"},
-}
-
-# --- Session State for Login ---
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.user_email = ""
-
-# --- Helper Functions ---
-def extract_text_from_pdf(pdf_file):
-    reader = pypdf.PdfReader(pdf_file)
-    return "".join([page.extract_text() or "" for page in reader.pages])
-
-def download_gdrive_pdf(url):
-    try:
-        file_id_match = re.search(r'[/=]([-\w]{25,})', url)
-        if not file_id_match:
-            return None, "ലിങ്കിൽ നിന്നും ഫയൽ ഐഡി കണ്ടെത്താൻ കഴിഞ്ഞില്ല. ശരിയായ ലിങ്ക് നൽകുക."
-        file_id = file_id_match.group(1)
-        
-        download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        response = requests.get(download_url, allow_redirects=True)
-        
-        if response.status_code == 200:
-            if not response.content.startswith(b'%PDF'):
-                return None, "ഡൗൺലോഡ് ചെയ്തത് PDF അല്ല. ഫയൽ സൈസ് കൂടുതലാണ്, അല്ലെങ്കിൽ പെർമിഷൻ ഇല്ല."
-            return BytesIO(response.content), "Success"
-        else:
-            return None, "Google Drive-ൽ നിന്നും ഫയൽ എടുക്കാൻ കഴിഞ്ഞില്ല."
-    except Exception as e:
-        return None, f"Error: {str(e)}"
-
-def create_docx(text):
-    doc = docx.Document()
-    doc.add_heading('SSLC Study Notes', 0)
-    doc.add_paragraph(text)
-    bio = BytesIO()
-    doc.save(bio)
-    return bio.getvalue()
-
-def create_audio_improved(text):
-    async def _generate():
-        communicate = edge_tts.Communicate(text, "ml-IN-SobhanaNeural")
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        await communicate.save(temp_file.name)
-        return temp_file.name
-    audio_file_path = asyncio.run(_generate())
-    with open(audio_file_path, "rb") as f:
-        audio_bytes = f.read()
-    os.remove(audio_file_path)
-    return audio_bytes
-
-# --- API Configuration ---
-# API Key സെറ്റ് ചെയ്യുക (st.secrets വഴി സുരക്ഷിതമായി നൽകാം)
-# --- API Configuration ---
-    # .strip() നൽകുന്നത് വഴി അനാവശ്യ സ്പേസുകൾ ഒഴിവാകും
-    # --- API Configuration ---
+# ---------------------------------------------------------
+# 2. API Configuration (Secure & Updated Model)
+# ---------------------------------------------------------
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"].strip()
     genai.configure(api_key=GEMINI_API_KEY)
     
-    # 404 എറർ ഒഴിവാക്കാൻ updated model പേര് നൽകുന്നു
-    model = genai.GenerativeModel('gemini-2.0-flash')
-
+    # 404 Error ഒഴിവാക്കാൻ ആധുനിക മോഡൽ ഉപയോഗിക്കുന്നു
+    model = genai.GenerativeModel('gemini-2.5-flash')
 except Exception as e:
-    st.error("⚠️ Gemini API Key കണ്ടെത്താനായില്ല! Streamlit Secrets പരിശോധിക്കുക.")
-    st.stop()  # API Key ഇല്ലെങ്കിൽ ആപ്പ് ഇവിടെ വെച്ച് നിക്കും
+    st.error("⚠️ Gemini API Key കണ്ടെത്താനായില്ല! Streamlit Cloud Secrets-ൽ 'GEMINI_API_KEY' ഉണ്ടെന്ന് ഉറപ്പാക്കുക.")
+    st.stop()
 
-# --- Sidebar Navigation & Settings ---
+# ---------------------------------------------------------
+# 3. Sidebar Navigation
+# ---------------------------------------------------------
 st.sidebar.title("📌 മെനു")
 app_mode = st.sidebar.radio(
     "നിങ്ങൾക്ക് വേണ്ട ഫീച്ചർ തിരഞ്ഞെടുക്കുക:",
-    ["0. പാഠപുസ്തകം / നോട്ട്സ് (PDF Chat)",
-     "1. ചിത്രങ്ങൾ നൽകി പഠിക്കാം (Image Analysis)",
-     "2. AI Mock Test (ക്വിസ്)",
-     "3. വോയിസ് ഇൻപുട്ട് (സംസാരിച്ച് ചോദിക്കാം)",
-     "4. YouTube Video Summarizer",
-     "5. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)",
-     "6. സ്റ്റഡി പ്ലാനർ (Study Planner)",
-     "7. ഫ്ലാഷ് കാർഡുകൾ (Quick Revision)"]
+    [
+        "1. ചിത്രങ്ങൾ നൽകി പഠിക്കാം (Image Analysis)",
+        "2. AI Mock Test (ക്വിസ്)",
+        "3. വോയിസ് ഇൻപുട്ട് (സംസാരിച്ച് ചോദിക്കാം)",
+        "4. YouTube Video Summarizer",
+        "5. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)",
+        "6. സ്റ്റഡി പ്ലാനർ (Study Planner)",
+        "7. ഫ്ലാഷ് കാർഡുകൾ (Quick Revision)"
+    ]
 )
-
-st.sidebar.markdown("---")
-st.sidebar.title("⚙️ Settings")
-with st.sidebar.expander("🎨 Appearance (Theme)"):
-    selected_theme_name = st.selectbox("തീം തിരഞ്ഞെടുക്കുക:", list(THEMES.keys()))
-    current_theme = THEMES[selected_theme_name]
-
-st.sidebar.markdown("---")
-st.sidebar.title("🔐 Account & History")
-
-# Login / Logout Logic
-if not st.session_state.logged_in:
-    st.sidebar.markdown("പഴയ ചാറ്റുകൾ സേവ് ചെയ്യാൻ ലോഗിൻ ചെയ്യുക:")
-    login_email = st.sidebar.text_input("📧 Email Address:", placeholder="example@gmail.com")
-    if st.sidebar.button("Login", use_container_width=True):
-        if login_email:
-            st.session_state.logged_in = True
-            st.session_state.user_email = login_email
-            st.rerun()
-        else:
-            st.sidebar.error("ദയവായി ഇമെയിൽ നൽകുക!")
-else:
-    st.sidebar.success(f"👤 ലോഗിൻ ചെയ്തു:\n{st.session_state.user_email}")
-    if st.sidebar.button("Logout", use_container_width=True):
-        st.session_state.logged_in = False
-        st.session_state.user_email = ""
-        st.rerun()
-        
-    st.sidebar.markdown("### 🕒 നിങ്ങളുടെ ഹിസ്റ്ററി")
-    past_chats = get_history(st.session_state.user_email)
-    if past_chats:
-        for chat in past_chats:
-            with st.sidebar.expander(f"📝 {chat[1][:25]}..."):
-                st.caption("ചോദ്യം:")
-                st.write(chat[2][:100] + "...")
-    else:
-        st.sidebar.caption("പഴയ ചാറ്റുകൾ ലഭ്യമല്ല.")
-
-
-# Dynamic CSS Injection
-st.markdown(f"""
-    <style>
-    .stApp {{ background-color: {current_theme['bg']} !important; color: {current_theme['text']} !important; }}
-    .stApp, p, span, div, label, h1, h2, h3, h4 {{ color: {current_theme['text']} !important; }}
-    .main-card {{
-        background-color: {current_theme['card']};
-        border: 1px solid {current_theme['border']};
-        border-radius: 16px;
-        padding: 24px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-        margin-bottom: 20px;
-    }}
-    .stButton>button {{
-        background: linear-gradient(135deg, {current_theme['accent']}, {current_theme['border']}) !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 12px 24px !important;
-        font-weight: 700 !important;
-    }}
-    textarea {{ resize: vertical !important; }}
-    </style>
-""", unsafe_allow_html=True)
-
-
-# Main UI Header
-st.markdown(f"<h1 style='text-align: center; color: {current_theme['accent']};'>SSLC AI Master 🎓</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; opacity: 0.8;'>നോട്ട്സ് നൽകുക, പഠിക്കുക, കേൾക്കുക!</p>", unsafe_allow_html=True)
-st.write("---")
-
-# ---------------------------------------------------------
-# 0. PDF / Notes Chat (From Code 1)
-# ---------------------------------------------------------
-if app_mode == "0. പാഠപുസ്തകം / നോട്ട്സ് (PDF Chat)":
-    st.header("📄 PDF നോട്ട്സ് അനാലിസിസ്")
-    st.markdown("<div class='main-card'>", unsafe_allow_html=True)
-    
-    pdf_text = ""
-    upload_method = st.radio("എങ്ങനെയാണ് നോട്ട്സ് നൽകുന്നത്?", ("വേണ്ട (ചോദ്യം മാത്രം)", "PDF അപ്‌ലോഡ് ചെയ്യുക", "Google Drive ലിങ്ക് നൽകുക"))
-    
-    if upload_method == "PDF അപ്‌ലോഡ് ചെയ്യുക":
-        uploaded_pdf = st.file_uploader("📄 പാഠപുസ്തകം അല്ലെങ്കിൽ നോട്ട്സ് (PDF):", type=["pdf"])
-        if uploaded_pdf is not None:
-            pdf_text = extract_text_from_pdf(uploaded_pdf)
-            st.success("✅ PDF വിജയകരമായി വായിച്ചെടുത്തു!")
-            
-    elif upload_method == "Google Drive ലിങ്ക് നൽകുക":
-        gdrive_url = st.text_input("🔗 ഗൂഗിൾ ഡ്രൈവ് ലിങ്ക് ഇവിടെ പേസ്റ്റ് ചെയ്യുക (Ensure access is 'Anyone with the link'):")
-        if gdrive_url:
-            with st.spinner("ഡ്രൈവിൽ നിന്നും ഡൗൺലോഡ് ചെയ്യുന്നു..."):
-                pdf_bytes, status = download_gdrive_pdf(gdrive_url)
-                if pdf_bytes:
-                    pdf_text = extract_text_from_pdf(pdf_bytes)
-                    st.success("✅ ഗൂഗിൾ ഡ്രൈവിൽ നിന്നും PDF വിജയകരമായി വായിച്ചെടുത്തു!")
-                else:
-                    st.error(status)
-                    
-    user_input = st.text_area("നിങ്ങളുടെ ചോദ്യം അല്ലെങ്കിൽ വിഷയം ഇവിടെ നൽകുക:", placeholder="ഉദാഹരണത്തിന്: എന്താണ് Photosynthesis?", height=120)
-    st.caption("💡 വലുതാക്കാൻ ടെക്സ്റ്റ് ബോക്സിന്റെ താഴെ വലത്തേ അറ്റത്ത് ക്ലിക്ക് ചെയ്ത് താഴേക്ക് വലിക്കുക.")
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    if st.button("ഉത്തരം കണ്ടെത്തുക 🚀"):
-        if user_input or pdf_text:
-            combined_input = user_input
-            if pdf_text:
-                combined_input += f"\n\nContext from PDF:\n{pdf_text[:4000]}"
-                
-            prompt = f"Act as an expert Kerala SSLC teacher. Explain the topic in a simple, accurate, and student-friendly way. Follow this format: First write the ENGLISH point clearly. Immediately below it, write the MALAYALAM translation. Keep it organized, complete, and easy to study. Topic: {combined_input}"
-            
-            with st.spinner('AI ഉത്തരം തയ്യാറാക്കുന്നു...'):
-                try:
-                    response = model.generate_content(prompt)
-                    
-                    # Save to History ONLY if Logged in
-                    if st.session_state.logged_in:
-                        save_chat(st.session_state.user_email, user_input if user_input else "PDF Analysis", combined_input, response.text)
-                    
-                    st.success("✅ ഉത്തരം ലഭിച്ചു!")
-                    st.write(response.text)
-                    st.markdown("---")
-                    
-                    st.markdown(f"<h3 style='color: {current_theme['accent']};'>🛠️ Smart Actions</h3>", unsafe_allow_html=True)
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.download_button(
-                            label="📄 Download as Word Doc",
-                            data=create_docx(response.text),
-                            file_name="SSLC_AI_Notes.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        )
-                        if st.button("🎧 ഈ ഉത്തരം കേൾക്കാം (High Quality)"):
-                            with st.spinner("ഓഡിയോ തയ്യാറാക്കുന്നു..."):
-                                audio_bytes = create_audio_improved(response.text)
-                                st.audio(audio_bytes, format='audio/mp3')
-                                
-                    with col2:
-                        with st.expander("📝 ഉത്തരം കോപ്പി ചെയ്യാൻ ഇവിടെ ക്ലിക്ക് ചെയ്യുക"):
-                            st.code(response.text, language='text')
-                            
-                except Exception as e:
-                    st.error(f"ഒരു പ്രശ്നമുണ്ട്: {e}")
-        else:
-            st.warning("ദയവായി ചോദ്യം ടൈപ്പ് ചെയ്യുകയോ PDF നൽകുകയോ ചെയ്യുക!")
 
 # ---------------------------------------------------------
 # 1. Image / Diagram Analysis
 # ---------------------------------------------------------
-elif app_mode == "1. ചിത്രങ്ങൾ നൽകി പഠിക്കാം (Image Analysis)":
+if app_mode == "1. ചിത്രങ്ങൾ നൽകി പഠിക്കാം (Image Analysis)":
     st.header("📷 ചിത്രങ്ങൾ നൽകി പഠിക്കാം")
     st.write("സയൻസ്, മാത്‌സ് പുസ്തകങ്ങളിലെ ചിത്രങ്ങൾ അപ്‌ലോഡ് ചെയ്യുക. AI അത് വിശദീകരിക്കും.")
     
@@ -283,11 +53,13 @@ elif app_mode == "1. ചിത്രങ്ങൾ നൽകി പഠിക്ക
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
         st.image(image, caption="അപ്‌ലോഡ് ചെയ്ത ചിത്രം", use_container_width=True)
+        
         prompt = st.text_input("ഈ ചിത്രത്തെക്കുറിച്ച് എന്താണ് അറിയേണ്ടത്? (ഉദാഹരണത്തിന്: ഇത് വിശദീകരിക്കാമോ?)")
         
         if st.button("വിശദീകരണം കണ്ടെത്തുക"):
             with st.spinner("ചിത്രം പരിശോധിക്കുന്നു..."):
-                response = model.generate_content([prompt if prompt else "ഈ ചിത്രം വിശദീകരിച്ചു തരുക (മലയാളത്തിൽ).", image])
+                query = prompt if prompt else "ഈ ചിത്രം വിശദീകരിച്ചു തരുക (മലയാളത്തിൽ)."
+                response = model.generate_content([query, image])
                 st.success("✅ ഉത്തരങ്ങൾ:")
                 st.write(response.text)
 
@@ -298,6 +70,7 @@ elif app_mode == "2. AI Mock Test (ക്വിസ്)":
     st.header("📝 സ്വയം പരീക്ഷിക്കാം (Mock Test)")
     
     topic = st.text_input("ഏത് വിഷയത്തിലാണ് ടെസ്റ്റ് വേണ്ടത്? (ഉദാഹരണത്തിന്: SSLC Physics - പ്രകാശത്തിന്റെ പ്രതിപതനം)")
+    
     if "quiz_data" not in st.session_state:
         st.session_state.quiz_data = None
 
@@ -309,8 +82,8 @@ elif app_mode == "2. AI Mock Test (ക്വിസ്)":
                 Return ONLY a valid JSON array of objects. Do not include markdown tags like ```json.
                 Format: [{{"question": "Question text (in Malayalam)", "options": ["opt1", "opt2", "opt3", "opt4"], "answer": "correct_opt"}}]
                 """
-                response = model.generate_content(quiz_prompt)
                 try:
+                    response = model.generate_content(quiz_prompt)
                     json_text = response.text.strip().replace('```json', '').replace('```', '')
                     st.session_state.quiz_data = json.loads(json_text)
                 except Exception as e:
@@ -347,7 +120,7 @@ elif app_mode == "3. വോയിസ് ഇൻപുട്ട് (സംസാ�
     if text:
         st.info(f"നിങ്ങൾ ചോദിച്ചത്: **{text}**")
         with st.spinner("ഉത്തരം കണ്ടെത്തുന്നു..."):
-            response = model.generate_content(f"Answer this query in Malayalam: {text}")
+            response = model.generate_content(f"Answer this query in Malayalam for an SSLC student: {text}")
             st.write(response.text)
 
 # ---------------------------------------------------------
@@ -372,7 +145,7 @@ elif app_mode == "4. YouTube Video Summarizer":
                     transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ml'])
                     transcript_text = " ".join([i['text'] for i in transcript])
                     
-                    summary_prompt = f"Summarize the following YouTube transcript into bullet points for a 10th-grade student. Please explain it in Malayalam:\n\n{transcript_text[:5000]}"
+                    summary_prompt = f"Summarize the following YouTube transcript into bullet points for a 10th-grade student in Malayalam:\n\n{transcript_text[:5000]}"
                     response = model.generate_content(summary_prompt)
                     
                     st.success("✅ വീഡിയോ നോട്ട്സ്:")
@@ -423,11 +196,11 @@ elif app_mode == "6. സ്റ്റഡി പ്ലാനർ (Study Planner)":
     if st.button("ടൈംടേബിൾ തയ്യാറാക്കുക"):
         with st.spinner("നിങ്ങൾക്കുള്ള പ്ലാൻ തയ്യാറാക്കുന്നു..."):
             plan_prompt = f"""
-            Create a structured study timetable in a Markdown table format.
+            Create a structured study timetable in Markdown table format for a 10th-grade student.
             Days left: {days} days.
             Daily study hours: {hours} hours.
             Subjects to cover: {subjects}.
-            Provide the explanation and strategy in Malayalam, but keep the table headings in English. Ensure it's realistic for a 10th-grade student.
+            Provide the explanation and strategy in Malayalam.
             """
             response = model.generate_content(plan_prompt)
             st.markdown(response.text)
