@@ -7,38 +7,39 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from streamlit_mic_recorder import speech_to_text
 
 # ---------------------------------------------------------
-# 1. Page Configuration (Must be the first Streamlit command)
+# 1. Page Configuration
 # ---------------------------------------------------------
 st.set_page_config(page_title="SSLC AI Study Buddy", page_icon="🎓", layout="wide")
 
 # ---------------------------------------------------------
-# 2. API Configuration (Auto-Detect Working Model)
+# 2. API Configuration (Cached to Prevent Quota Limit)
 # ---------------------------------------------------------
-try:
-    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"].strip()
-    genai.configure(api_key=GEMINI_API_KEY)
-    
-    # 404 NotFound എറർ തടയാൻ സ്വയം പ്രവർത്തിക്കുന്ന മോഡൽ കണ്ടെത്തുന്ന ഫംഗ്ഷൻ
-    def get_working_model():
-        try:
-            available_models = [
-                m.name for m in genai.list_models() 
-                if 'generateContent' in m.supported_generation_methods
-            ]
-            for pref in ['models/gemini-1.5-flash', 'models/gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']:
-                if pref in available_models:
-                    return genai.GenerativeModel(pref)
-            if available_models:
-                return genai.GenerativeModel(available_models[0])
-        except Exception:
-            pass
+@st.cache_resource
+def load_gemini_model():
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"].strip()
+        genai.configure(api_key=api_key)
+        # Standard Flash Model
         return genai.GenerativeModel('gemini-1.5-flash')
+    except Exception as e:
+        return None
 
-    model = get_working_model()
+model = load_gemini_model()
 
-except Exception as e:
-    st.error("⚠️ Gemini API Key കണ്ടെത്താനായില്ല! Streamlit Cloud Secrets-ൽ 'GEMINI_API_KEY' ഉണ്ടെന്ന് ഉറപ്പാക്കുക.")
+if not model:
+    st.error("⚠️ Gemini API Key കണ്ടെത്താനായില്ല! Streamlit Cloud Secrets-ൽ 'GEMINI_API_KEY' നൽകിയിട്ടുണ്ടെന്ന് ഉറപ്പാക്കുക.")
     st.stop()
+
+# Helper function to generate content safely
+def safe_generate(prompt_data):
+    try:
+        return model.generate_content(prompt_data).text
+    except Exception as e:
+        if "ResourceExhausted" in str(e) or "429" in str(e):
+            st.error("⚠️ API സൗജന്യ ക്വാട്ട കഴിഞ്ഞിരിക്കുന്നു. ദയവായി 1 മിനിറ്റ് കാത്തുനിന്ന ശേഷം വീണ്ടും ശ്രമിക്കുക!")
+        else:
+            st.error(f"സാങ്കേതിക തകരാർ: {e}")
+        return None
 
 # ---------------------------------------------------------
 # 3. Sidebar Navigation
@@ -75,9 +76,10 @@ if app_mode == "1. ചിത്രങ്ങൾ നൽകി പഠിക്ക�
         if st.button("വിശദീകരണം കണ്ടെത്തുക"):
             with st.spinner("ചിത്രം പരിശോധിക്കുന്നു..."):
                 query = prompt if prompt else "ഈ ചിത്രം വിശദീകരിച്ചു തരുക (മലയാളത്തിൽ)."
-                response = model.generate_content([query, image])
-                st.success("✅ ഉത്തരങ്ങൾ:")
-                st.write(response.text)
+                result = safe_generate([query, image])
+                if result:
+                    st.success("✅ ഉത്തരങ്ങൾ:")
+                    st.write(result)
 
 # ---------------------------------------------------------
 # 2. AI Mock Test / Quiz
@@ -98,12 +100,13 @@ elif app_mode == "2. AI Mock Test (ക്വിസ്)":
                 Return ONLY a valid JSON array of objects. Do not include markdown tags like ```json.
                 Format: [{{"question": "Question text (in Malayalam)", "options": ["opt1", "opt2", "opt3", "opt4"], "answer": "correct_opt"}}]
                 """
-                try:
-                    response = model.generate_content(quiz_prompt)
-                    json_text = response.text.strip().replace('```json', '').replace('```', '')
-                    st.session_state.quiz_data = json.loads(json_text)
-                except Exception as e:
-                    st.error("ചോദ്യങ്ങൾ ഉണ്ടാക്കുന്നതിൽ സാങ്കേതിക തകരാർ. വീണ്ടും ശ്രമിക്കുക.")
+                res = safe_generate(quiz_prompt)
+                if res:
+                    try:
+                        json_text = res.strip().replace('```json', '').replace('```', '')
+                        st.session_state.quiz_data = json.loads(json_text)
+                    except Exception:
+                        st.error("ചോദ്യങ്ങൾ ഉണ്ടാക്കുന്നതിൽ സാങ്കേതിക തകരാർ. വീണ്ടും ശ്രമിക്കുക.")
         else:
             st.warning("ദയവായി ഒരു വിഷയം നൽകുക!")
 
@@ -136,8 +139,9 @@ elif app_mode == "3. വോയിസ് ഇൻപുട്ട് (സംസാ�
     if text:
         st.info(f"നിങ്ങൾ ചോദിച്ചത്: **{text}**")
         with st.spinner("ഉത്തരം കണ്ടെത്തുന്നു..."):
-            response = model.generate_content(f"Answer this query in Malayalam for an SSLC student: {text}")
-            st.write(response.text)
+            res = safe_generate(f"Answer this query in Malayalam for an SSLC student: {text}")
+            if res:
+                st.write(res)
 
 # ---------------------------------------------------------
 # 4. YouTube Video Summarizer
@@ -162,11 +166,11 @@ elif app_mode == "4. YouTube Video Summarizer":
                     transcript_text = " ".join([i['text'] for i in transcript])
                     
                     summary_prompt = f"Summarize the following YouTube transcript into bullet points for a 10th-grade student in Malayalam:\n\n{transcript_text[:5000]}"
-                    response = model.generate_content(summary_prompt)
-                    
-                    st.success("✅ വീഡിയോ നോട്ട്സ്:")
-                    st.write(response.text)
-            except Exception as e:
+                    res = safe_generate(summary_prompt)
+                    if res:
+                        st.success("✅ വീഡിയോ നോട്ട്സ്:")
+                        st.write(res)
+            except Exception:
                 st.error("ഈ വീഡിയോയ്ക്ക് സബ്ടൈറ്റിലുകൾ ലഭ്യമല്ല, അല്ലെങ്കിൽ ലിങ്ക് തെറ്റാണ്.")
         else:
             st.warning("ലിങ്ക് നൽകുക!")
@@ -190,11 +194,12 @@ elif app_mode == "5. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)":
         st.session_state.messages.append({"role": "user", "content": prompt})
 
         with st.spinner("ചിന്തിക്കുന്നു..."):
-            response = model.generate_content(prompt)
+            res = safe_generate(prompt)
             
-        with st.chat_message("assistant"):
-            st.markdown(response.text)
-        st.session_state.messages.append({"role": "assistant", "content": response.text})
+        if res:
+            with st.chat_message("assistant"):
+                st.markdown(res)
+            st.session_state.messages.append({"role": "assistant", "content": res})
 
 # ---------------------------------------------------------
 # 6. Study Planner
@@ -218,8 +223,9 @@ elif app_mode == "6. സ്റ്റഡി പ്ലാനർ (Study Planner)":
             Subjects to cover: {subjects}.
             Provide the explanation and strategy in Malayalam.
             """
-            response = model.generate_content(plan_prompt)
-            st.markdown(response.text)
+            res = safe_generate(plan_prompt)
+            if res:
+                st.markdown(res)
 
 # ---------------------------------------------------------
 # 7. Flash Cards
@@ -238,18 +244,19 @@ elif app_mode == "7. ഫ്ലാഷ് കാർഡുകൾ (Quick Revision)":
                 Format the output strictly as a JSON array without markdown like ```json.
                 Format: [{{"title": "Formula / Year / Concept", "description": "Short explanation in Malayalam"}}]
                 """
-                try:
-                    response = model.generate_content(flash_prompt)
-                    json_text = response.text.strip().replace('```json', '').replace('```', '')
-                    cards = json.loads(json_text)
-                    
-                    cols = st.columns(3)
-                    for idx, card in enumerate(cards):
-                        with cols[idx % 3]:
-                            with st.container(border=True):
-                                st.subheader(card['title'])
-                                st.write(card['description'])
-                except Exception as e:
-                    st.error("കാർഡുകൾ ലോഡ് ചെയ്യുന്നതിൽ പിഴവ് സംഭവിച്ചു. വിഷയം കുറച്ചുകൂടി വ്യക്തമായി നൽകുക.")
+                res = safe_generate(flash_prompt)
+                if res:
+                    try:
+                        json_text = res.strip().replace('```json', '').replace('```', '')
+                        cards = json.loads(json_text)
+                        
+                        cols = st.columns(3)
+                        for idx, card in enumerate(cards):
+                            with cols[idx % 3]:
+                                with st.container(border=True):
+                                    st.subheader(card['title'])
+                                    st.write(card['description'])
+                    except Exception:
+                        st.error("കാർഡുകൾ ലോഡ് ചെയ്യുന്നതിൽ പിഴവ് സംഭവിച്ചു. വിഷയം കുറച്ചുകൂടി വ്യക്തമായി നൽകുക.")
         else:
             st.warning("ദയവായി വിഷയം നൽകുക!")
