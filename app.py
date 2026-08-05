@@ -97,9 +97,8 @@ def create_audio_improved(text):
     os.remove(audio_file_path)
     return audio_bytes
 
-# --- API Configuration ---
-# API Key സെറ്റ് ചെയ്യുക (st.secrets വഴി സുരക്ഷിതമായി നൽകാം)
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY" # Replace with st.secrets["GEMINI_API_KEY"] on Streamlit Cloud
+# --- API Configuration ---API Key സെറ്റ് ചെയ്യുക (st.secrets വഴി സുരക്ഷിതമായി നൽകാം)
+GEMINI_API_KEY = "YOUR_GEMINI_API_KEY" #Replace with st.secrets["GEMINI_API_KEY"] on Streamlit Cloud
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
