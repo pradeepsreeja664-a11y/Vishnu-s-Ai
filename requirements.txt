@@ -1,4 +1,6 @@
-google-genai
+streamlit
 pypdf
 python-docx
-gTTS
+google-genai
+requests
+edge-tts
