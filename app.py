@@ -100,7 +100,6 @@ def create_audio_improved(text):
 # --- API Configuration ---
 # API Key സെറ്റ് ചെയ്യുക (st.secrets വഴി സുരക്ഷിതമായി നൽകാം)
 # --- API Configuration ---
-try:
     # .strip() നൽകുന്നത് വഴി അനാവശ്യ സ്പേസുകൾ ഒഴിവാകും
     # --- API Configuration ---
 try:
