@@ -12,7 +12,7 @@ import edge_tts
 import tempfile
 
 # 1. Page Configuration
-st.set_page_config(page_title="VISHNU'S SSLC AI MASTER 📚", page_icon="🎓", layout="wide")
+st.set_page_config(page_title="SSLC AI Master 📚", page_icon="🎓", layout="wide")
 
 # --- Database Setup for Chat History ---
 def init_db():
@@ -35,39 +35,56 @@ def get_history(email):
     c.execute("SELECT id, topic, prompt, response FROM history WHERE email = ? ORDER BY id DESC", (email,))
     return c.fetchall()
 
-# 2. Themes Palette (20 Premium Themes)
+# 2. Themes Palette
 THEMES = {
     "1. Ultra Dark Premium": {"bg": "#0B0F19", "card": "#111827", "text": "#F9FAFB", "accent": "#6366F1", "border": "#1F2937"},
     "2. Glassmorphism Navy": {"bg": "#0F172A", "card": "#1E293B", "text": "#F8FAFC", "accent": "#38BDF8", "border": "#334155"},
     "3. Neon Cyberpunk": {"bg": "#0D0221", "card": "#1A0836", "text": "#00F5D4", "accent": "#FF007F", "border": "#7B2CBF"},
     "8. Classic Light": {"bg": "#F8FAFC", "card": "#FFFFFF", "text": "#0F172A", "accent": "#2563EB", "border": "#E2E8F0"},
-    # Add your other themes here... (kept short for brevity)
 }
 
-# --- Sidebar: Settings & Chat History ---
-st.sidebar.title("⚙️ Settings & History")
+# --- Session State for Login ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user_email = ""
 
-# User Login / Email for History
-user_email = st.sidebar.text_input("📧 ജിമെയിൽ ഐഡി നൽകുക (History Save ചെയ്യാൻ):", placeholder="example@gmail.com")
+# --- Sidebar: Settings, Login & History ---
+st.sidebar.title("⚙️ Settings")
 
 with st.sidebar.expander("🎨 Appearance (Theme)"):
     selected_theme_name = st.selectbox("തീം തിരഞ്ഞെടുക്കുക:", list(THEMES.keys()))
     current_theme = THEMES[selected_theme_name]
 
-# Chat History Section
-st.sidebar.markdown("### 🕒 പഴയ ചാറ്റുകൾ")
-if user_email:
-    past_chats = get_history(user_email)
+st.sidebar.markdown("---")
+st.sidebar.title("🔐 Account & History")
+
+# Login / Logout Logic
+if not st.session_state.logged_in:
+    st.sidebar.markdown("പഴയ ചാറ്റുകൾ സേവ് ചെയ്യാൻ ലോഗിൻ ചെയ്യുക:")
+    login_email = st.sidebar.text_input("📧 Email Address:", placeholder="example@gmail.com")
+    if st.sidebar.button("Login", use_container_width=True):
+        if login_email:
+            st.session_state.logged_in = True
+            st.session_state.user_email = login_email
+            st.rerun() # Page Refresh ആവാൻ
+        else:
+            st.sidebar.error("ദയവായി ഇമെയിൽ നൽകുക!")
+else:
+    st.sidebar.success(f"👤 ലോഗിൻ ചെയ്തു:\n{st.session_state.user_email}")
+    if st.sidebar.button("Logout", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.user_email = ""
+        st.rerun()
+        
+    st.sidebar.markdown("### 🕒 നിങ്ങളുടെ ഹിസ്റ്ററി")
+    past_chats = get_history(st.session_state.user_email)
     if past_chats:
         for chat in past_chats:
             with st.sidebar.expander(f"📝 {chat[1][:25]}..."):
                 st.caption("ചോദ്യം:")
                 st.write(chat[2][:100] + "...")
-                # Option to load this chat into the main view could be added here
     else:
         st.sidebar.caption("പഴയ ചാറ്റുകൾ ലഭ്യമല്ല.")
-else:
-    st.sidebar.caption("ഹിസ്റ്ററി കാണാൻ ഇമെയിൽ നൽകുക.")
 
 # Dynamic CSS Injection
 st.markdown(f"""
@@ -90,10 +107,7 @@ st.markdown(f"""
         padding: 12px 24px !important;
         font-weight: 700 !important;
     }}
-    /* Making text area resizable easily at the bottom right */
-    textarea {{
-        resize: vertical !important;
-    }}
+    textarea {{ resize: vertical !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -106,21 +120,26 @@ def extract_text_from_pdf(pdf_file):
     reader = pypdf.PdfReader(pdf_file)
     return "".join([page.extract_text() or "" for page in reader.pages])
 
+# Updated Google Drive Download Function with Error Handling
 def download_gdrive_pdf(url):
     try:
-        # Extract File ID from Google Drive URL
         file_id_match = re.search(r'[/=]([-\w]{25,})', url)
         if not file_id_match:
-            return None, "Invalid Google Drive URL"
+            return None, "ലിങ്കിൽ നിന്നും ഫയൽ ഐഡി കണ്ടെത്താൻ കഴിഞ്ഞില്ല. ശരിയായ ലിങ്ക് നൽകുക."
         file_id = file_id_match.group(1)
+        
         download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        response = requests.get(download_url)
+        response = requests.get(download_url, allow_redirects=True)
+        
         if response.status_code == 200:
+            # Check if the downloaded file is actually a PDF (starts with %PDF)
+            if not response.content.startswith(b'%PDF'):
+                return None, "ഡൗൺലോഡ് ചെയ്തത് PDF അല്ല. ഒന്നുകിൽ ഫയലിന്റെ പെർമിഷൻ 'Anyone with the link' അല്ല, അല്ലെങ്കിൽ ഫയൽ സൈസ് കൂടുതലാണ്. ദയവായി PDF നേരിട്ട് അപ്‌ലോഡ് ചെയ്യുക."
             return BytesIO(response.content), "Success"
         else:
-            return None, "Failed to download from Drive. Ensure link is 'Anyone with the link can view'."
+            return None, "Google Drive-ൽ നിന്നും ഫയൽ എടുക്കാൻ കഴിഞ്ഞില്ല."
     except Exception as e:
-        return None, str(e)
+        return None, f"Error: {str(e)}"
 
 def create_docx(text):
     doc = docx.Document()
@@ -130,10 +149,8 @@ def create_docx(text):
     doc.save(bio)
     return bio.getvalue()
 
-# Improved Text to Speech using edge-tts (Natural Malayalam Voice)
 def create_audio_improved(text):
     async def _generate():
-        # ml-IN-SobhanaNeural is a highly natural Malayalam female voice
         communicate = edge_tts.Communicate(text, "ml-IN-SobhanaNeural")
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
         await communicate.save(temp_file.name)
@@ -142,7 +159,7 @@ def create_audio_improved(text):
     audio_file_path = asyncio.run(_generate())
     with open(audio_file_path, "rb") as f:
         audio_bytes = f.read()
-    os.remove(audio_file_path) # Cleanup
+    os.remove(audio_file_path)
     return audio_bytes
 
 # API Key Validation
@@ -155,9 +172,8 @@ else:
     
     st.markdown("<div class='main-card'>", unsafe_allow_html=True)
     
-    # Context Input (File or Drive Link)
     pdf_text = ""
-    upload_method = st.radio("എങ്ങനെയാണ് നോട്ട്സ് നൽകുന്നത്?", ("PDF അപ്‌ലോഡ് ചെയ്യുക", "Google Drive ലിങ്ക് നൽകുക", "വേണ്ട (ചോദ്യം മാത്രം)"))
+    upload_method = st.radio("എങ്ങനെയാണ് നോട്ട്സ് നൽകുന്നത്?", ("വേണ്ട (ചോദ്യം മാത്രം)", "PDF അപ്‌ലോഡ് ചെയ്യുക", "Google Drive ലിങ്ക് നൽകുക"))
     
     if upload_method == "PDF അപ്‌ലോഡ് ചെയ്യുക":
         uploaded_pdf = st.file_uploader("📄 പാഠപുസ്തകം അല്ലെങ്കിൽ നോട്ട്സ് (PDF):", type=["pdf"])
@@ -166,7 +182,7 @@ else:
             st.success("✅ PDF വിജയകരമായി വായിച്ചെടുത്തു!")
             
     elif upload_method == "Google Drive ലിങ്ക് നൽകുക":
-        gdrive_url = st.text_input("🔗 ഗൂഗിൾ ഡ്രൈവ് ലിങ്ക് ഇവിടെ പേസ്റ്റ് ചെയ്യുക (Ensure link access is 'Public'):")
+        gdrive_url = st.text_input("🔗 ഗൂഗിൾ ഡ്രൈവ് ലിങ്ക് ഇവിടെ പേസ്റ്റ് ചെയ്യുക (Ensure access is 'Anyone with the link'):")
         if gdrive_url:
             with st.spinner("ഡ്രൈവിൽ നിന്നും ഡൗൺലോഡ് ചെയ്യുന്നു..."):
                 pdf_bytes, status = download_gdrive_pdf(gdrive_url)
@@ -174,9 +190,8 @@ else:
                     pdf_text = extract_text_from_pdf(pdf_bytes)
                     st.success("✅ ഗൂഗിൾ ഡ്രൈവിൽ നിന്നും PDF വിജയകരമായി വായിച്ചെടുത്തു!")
                 else:
-                    st.error(f"Error: {status}")
+                    st.error(status) # Shows the exact error why it failed
 
-    # Main Typing Box (Resizable corner at bottom-right)
     user_input = st.text_area("നിങ്ങളുടെ ചോദ്യം അല്ലെങ്കിൽ വിഷയം ഇവിടെ നൽകുക:", 
                               placeholder="ഉദാഹരണത്തിന്: എന്താണ് Photosynthesis?", 
                               height=120) 
@@ -199,9 +214,9 @@ else:
                         contents=prompt
                     )
                     
-                    # Save to History if email is provided
-                    if user_email:
-                        save_chat(user_email, user_input if user_input else "PDF Analysis", combined_input, response.text)
+                    # Save to History ONLY if Logged in
+                    if st.session_state.logged_in:
+                        save_chat(st.session_state.user_email, user_input if user_input else "PDF Analysis", combined_input, response.text)
                     
                     st.success("✅ ഉത്തരം ലഭിച്ചു!")
                     st.write(response.text)
@@ -218,9 +233,8 @@ else:
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         )
                         
-                        # High-Quality Audio Feature
                         if st.button("🎧 ഈ ഉത്തരം കേൾക്കാം (High Quality)"):
-                            with st.spinner("ഓഡിയോ തയ്യാറാക്കുന്നു (കുറച്ചു സമയം എടുക്കാം)..."):
+                            with st.spinner("ഓഡിയോ തയ്യാറാക്കുന്നു..."):
                                 audio_bytes = create_audio_improved(response.text)
                                 st.audio(audio_bytes, format='audio/mp3')
                                 
