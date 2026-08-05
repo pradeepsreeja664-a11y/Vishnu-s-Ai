@@ -1,6 +1,9 @@
 streamlit
+google-generativeai
 pypdf
 python-docx
-google-genai
-requests
 edge-tts
+pillow
+youtube-transcript-api
+streamlit-mic-recorder
+requests
