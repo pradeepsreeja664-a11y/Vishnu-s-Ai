@@ -154,7 +154,7 @@ def download_gdrive_pdf(url):
 # ==========================================
 # 🔑 API KEY CONFIGURATION
 # ==========================================
-MY_GEMINI_API_KEY = "AQ.Ab8RN6LcLplZzO33yI5kHGZaHBmqTpozZhpWxBeu4NWOiW1uTw" # <--- നിന്റെ API Key ഇവിടെ പേസ്റ്റ് ചെയ്യുക
+MY_GEMINI_API_KEY = "AQ.Ab8RN6K8fVvJojq4a-bhJtk9dEBCXHwsVgi9iokgar086lYeLg" # <--- നിന്റെ API Key ഇവിടെ പേസ്റ്റ് ചെയ്യുക
 
 try:
     api_key_to_use = st.secrets.get("GEMINI_API_KEY", MY_GEMINI_API_KEY)
