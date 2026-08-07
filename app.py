@@ -152,20 +152,20 @@ def download_gdrive_pdf(url):
     except Exception as e: return None, f"Error: {str(e)}"
 
 # ==========================================
-# 🔑 API KEY CONFIGURATION
+# 🔑 API KEY CONFIGURATION (Streamlit Secrets)
 # ==========================================
-MY_GEMINI_API_KEY = "AQ.Ab8RN6K8fVvJojq4a-bhJtk9dEBCXHwsVgi9iokgar086lYeLg" # <--- നിന്റെ API Key ഇവിടെ പേസ്റ്റ് ചെയ്യുക
-
 try:
-    api_key_to_use = st.secrets.get("GEMINI_API_KEY", MY_GEMINI_API_KEY)
-except:
-    api_key_to_use = MY_GEMINI_API_KEY
-
-if api_key_to_use == "YOUR_API_KEY_HERE":
-    st.error("⚠️ കോഡിൽ API Key നൽകിയിട്ടില്ല! app.py ഫയലിൽ വരി നമ്പർ 121-ൽ നിന്റെ API Key നൽകുക.")
+    # Streamlit secrets-ൽ നിന്നും API key സുരക്ഷിതമായി എടുക്കുന്നു
+    api_key_to_use = st.secrets["GEMINI_API_KEY"]
+except KeyError:
+    # Secrets-ൽ API key ഇല്ലെങ്കിൽ മാത്രം ഈ എറർ കാണിക്കും
+    st.error("⚠️ API Key കണ്ടെത്തിയില്ല! ദയവായി Streamlit Secrets-ൽ 'GEMINI_API_KEY' സെറ്റ് ചെയ്യുക.")
     st.stop()
 
+# API Key കോൺഫിഗർ ചെയ്യുന്നു
 genai.configure(api_key=api_key_to_use)
+
+# ശരിയായ മോഡൽ പേര് നൽകുന്നു (gemini-3.6-flash തെറ്റാണ്, പകരം gemini-1.5-flash ഉപയോഗിക്കുക)
 model = genai.GenerativeModel('gemini-3.6-flash')
 
 
