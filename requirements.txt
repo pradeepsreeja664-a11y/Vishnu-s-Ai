@@ -7,3 +7,4 @@ pillow
 youtube-transcript-api
 streamlit-mic-recorder
 requests
+fpdf
