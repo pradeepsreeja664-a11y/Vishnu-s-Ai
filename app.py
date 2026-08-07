@@ -14,30 +14,44 @@ from PIL import Image
 from youtube_transcript_api import YouTubeTranscriptApi
 import json
 import urllib.parse
-from streamlit_mic_recorder import speech_to_text
+from fpdf import FPDF
+import uuid
+from streamlit_cookies_controller import CookieController
 
 # 1. Page Configuration
 st.set_page_config(page_title="SSLC AI Master 📚", page_icon="🎓", layout="wide")
+
+# Cookie Controller for Persistent Login
+controller = CookieController()
 
 # --- Database Setup for Chat History ---
 def init_db():
     conn = sqlite3.connect('chat_history.db', check_same_thread=False)
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS history
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, topic TEXT, prompt TEXT, response TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS chat_sessions (session_id TEXT PRIMARY KEY, email TEXT, title TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT, content TEXT)''')
     conn.commit()
     return conn
 
 conn = init_db()
 
-def save_chat(email, topic, prompt, response):
+def save_chat_message(session_id, email, role, content):
     c = conn.cursor()
-    c.execute("INSERT INTO history (email, topic, prompt, response) VALUES (?, ?, ?, ?)", (email, topic, prompt, response))
+    c.execute("SELECT session_id FROM chat_sessions WHERE session_id=?", (session_id,))
+    if not c.fetchone():
+        title = content[:25] + "..." if len(content) > 25 else content
+        c.execute("INSERT INTO chat_sessions (session_id, email, title) VALUES (?, ?, ?)", (session_id, email, title))
+    c.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)", (session_id, role, content))
     conn.commit()
 
-def get_history(email):
+def get_chat_sessions(email):
     c = conn.cursor()
-    c.execute("SELECT id, topic, prompt, response FROM history WHERE email = ? ORDER BY id DESC", (email,))
+    c.execute("SELECT session_id, title FROM chat_sessions WHERE email = ? ORDER BY rowid DESC", (email,))
+    return c.fetchall()
+
+def get_chat_messages(session_id):
+    c = conn.cursor()
+    c.execute("SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY id ASC", (session_id,))
     return c.fetchall()
 
 # 2. Themes Palette
@@ -48,42 +62,49 @@ THEMES = {
     "4. Classic Light": {"bg": "#F8FAFC", "card": "#FFFFFF", "text": "#0F172A", "accent": "#2563EB", "border": "#E2E8F0"},
 }
 
-# --- Session State ---
-if "logged_in" not in st.session_state:
+# --- Session States ---
+if "logged_in" not in st.session_state: 
     st.session_state.logged_in = False
     st.session_state.user_email = ""
-if "api_key" not in st.session_state:
-    st.session_state.api_key = ""
 
-# --- Helper Functions ---
-def extract_text_from_pdf(pdf_file):
-    reader = pypdf.PdfReader(pdf_file)
-    return "".join([page.extract_text() or "" for page in reader.pages])
+if "current_session_id" not in st.session_state: 
+    st.session_state.current_session_id = str(uuid.uuid4())
 
-def download_gdrive_pdf(url):
-    try:
-        file_id_match = re.search(r'[/=]([-\w]{25,})', url)
-        if not file_id_match:
-            return None, "ലിങ്കിൽ നിന്നും ഫയൽ ഐഡി കണ്ടെത്താൻ കഴിഞ്ഞില്ല."
-        file_id = file_id_match.group(1)
-        
-        download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        response = requests.get(download_url, allow_redirects=True)
-        
-        if response.status_code == 200 and response.content.startswith(b'%PDF'):
-            return BytesIO(response.content), "Success"
-        else:
-            return None, "ഡൗൺലോഡ് ചെയ്തത് PDF അല്ല അല്ലെങ്കിൽ പെർമിഷൻ ഇല്ല."
-    except Exception as e:
-        return None, f"Error: {str(e)}"
+# Persistent Login Check (Auto-Login from Cookie)
+if not st.session_state.logged_in:
+    cookie_email = controller.get('user_email')
+    if cookie_email:
+        st.session_state.logged_in = True
+        st.session_state.user_email = cookie_email
 
+# Output states for ALL 8 features
+for i in range(8):
+    if f"out_{i}" not in st.session_state:
+        st.session_state[f"out_{i}"] = ""
+
+# Navigation State
+if "app_mode_select" not in st.session_state:
+    st.session_state.app_mode_select = "0. പാഠപുസ്തകം / നോട്ട്സ് (PDF Chat)"
+
+# --- Helper Functions (Downloads & Audio) ---
 def create_docx(text):
     doc = docx.Document()
-    doc.add_heading('SSLC Study Notes', 0)
+    doc.add_heading('SSLC AI Smart Notes', 0)
     doc.add_paragraph(text)
     bio = BytesIO()
     doc.save(bio)
     return bio.getvalue()
+
+def create_pdf(text):
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font("Helvetica", size=12)
+        safe_text = text.encode('latin-1', 'replace').decode('latin-1')
+        pdf.multi_cell(0, 10, txt=safe_text)
+        return bytes(pdf.output(dest='S'))
+    except Exception: return b""
 
 def create_audio_improved(text):
     async def _generate():
@@ -93,34 +114,74 @@ def create_audio_improved(text):
         return temp_file.name
     try:
         audio_file_path = asyncio.run(_generate())
-        with open(audio_file_path, "rb") as f:
-            audio_bytes = f.read()
+        with open(audio_file_path, "rb") as f: audio_bytes = f.read()
         os.remove(audio_file_path)
         return audio_bytes
-    except Exception as e:
-        return None
+    except Exception: return None
 
-# --- Sidebar: API Key, Menu & Settings ---
-st.sidebar.title("🔑 API Key Setup")
-api_input = st.sidebar.text_input("നിങ്ങളുടെ Gemini API Key നൽകുക:", type="password", value=st.session_state.api_key)
-if api_input:
-    st.session_state.api_key = api_input
-    genai.configure(api_key=st.session_state.api_key)
-else:
-    st.sidebar.warning("ആപ്പ് പ്രവർത്തിക്കാൻ API Key നൽകുക!")
+# The Universal Smart Actions Toolbar
+def render_smart_actions(text_content, feature_id):
+    st.markdown("---")
+    st.markdown(f"### 🛠️ സേവ് ചെയ്യാം (Save & Share)")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1: st.download_button("📄 Word (Docx)", create_docx(text_content), f"Result_{feature_id}.docx", key=f"docx_{feature_id}")
+    with col2: st.download_button("📕 PDF", create_pdf(text_content), f"Result_{feature_id}.pdf", key=f"pdf_{feature_id}")
+    with col3:
+        if st.button("🎧 ഓഡിയോ കേൾക്കാം", key=f"audio_{feature_id}"):
+            with st.spinner("ഓഡിയോ തയ്യാറാക്കുന്നു..."):
+                audio_bytes = create_audio_improved(text_content)
+                if audio_bytes: st.audio(audio_bytes, format='audio/mp3')
+                else: st.error("ഓഡിയോ ഉണ്ടാക്കുന്നതിൽ തകരാർ.")
+    with col4:
+        with st.expander("📝 കോപ്പി ചെയ്യാൻ"): st.code(text_content, language='text')
 
-st.sidebar.markdown("---")
+# PDF Helpers
+def extract_text_from_pdf(pdf_file):
+    reader = pypdf.PdfReader(pdf_file)
+    return "".join([page.extract_text() or "" for page in reader.pages])
+
+def download_gdrive_pdf(url):
+    try:
+        file_id_match = re.search(r'[/=]([-\w]{25,})', url)
+        if not file_id_match: return None, "ലിങ്കിൽ നിന്നും ഫയൽ ഐഡി കണ്ടെത്താൻ കഴിഞ്ഞില്ല."
+        download_url = f"https://drive.google.com/uc?export=download&id={file_id_match.group(1)}"
+        response = requests.get(download_url, allow_redirects=True)
+        if response.status_code == 200 and response.content.startswith(b'%PDF'):
+            return BytesIO(response.content), "Success"
+        else: return None, "ഡൗൺലോഡ് ചെയ്തത് PDF അല്ല."
+    except Exception as e: return None, f"Error: {str(e)}"
+
+# ==========================================
+# 🔑 API KEY CONFIGURATION
+# ==========================================
+MY_GEMINI_API_KEY = "AQ.Ab8RN6LcLplZzO33yI5kHGZaHBmqTpozZhpWxBeu4NWOiW1uTw" # <--- നിന്റെ API Key ഇവിടെ പേസ്റ്റ് ചെയ്യുക
+
+try:
+    api_key_to_use = st.secrets.get("GEMINI_API_KEY", MY_GEMINI_API_KEY)
+except:
+    api_key_to_use = MY_GEMINI_API_KEY
+
+if api_key_to_use == "YOUR_API_KEY_HERE":
+    st.error("⚠️ കോഡിൽ API Key നൽകിയിട്ടില്ല! app.py ഫയലിൽ വരി നമ്പർ 121-ൽ നിന്റെ API Key നൽകുക.")
+    st.stop()
+
+genai.configure(api_key=api_key_to_use)
+model = genai.GenerativeModel('gemini-3.6-flash')
+
+
+# --- Sidebar Setup ---
 st.sidebar.title("📌 മെനു")
 app_mode = st.sidebar.radio(
     "ഫീച്ചർ തിരഞ്ഞെടുക്കുക:",
-    ["0. പാഠപുസ്തകം / നോട്ട്സ് (PDF Chat)",
-     "1. ചിത്രങ്ങൾ നൽകി പഠിക്കാം (Image Analysis)",
-     "2. AI Mock Test (ക്വിസ്)",
-     "3. വോയിസ് ഇൻപുട്ട് (സംസാരിച്ച് ചോദിക്കാം)",
-     "4. YouTube Video Summarizer",
-     "5. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)",
-     "6. സ്റ്റഡി പ്ലാനർ (Study Planner)",
-     "7. ഫ്ലാഷ് കാർഡുകൾ (Quick Revision)"]
+    ["1. പാഠപുസ്തകം / നോട്ട്സ് (PDF Chat)",
+     "2. ചിത്രങ്ങൾ നൽകി പഠിക്കാം (Image Analysis)",
+     "3. AI Mock Test (ക്വിസ്)",
+     "4. വോയിസ് ഇൻപുട്ട് (സംസാരിച്ച് ചോദിക്കാം)",
+     "5. YouTube Video Summarizer",
+     "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)",
+     "7. സ്റ്റഡി പ്ലാനർ (Study Planner)",
+     "8. ഫ്ലാഷ് കാർഡുകൾ (Quick Revision)"],
+    key="app_mode_select"
 )
 
 st.sidebar.markdown("---")
@@ -129,138 +190,93 @@ with st.sidebar.expander("🎨 Appearance (Theme)"):
     current_theme = THEMES[selected_theme_name]
 
 st.sidebar.markdown("---")
-st.sidebar.title("🔐 Account & History")
+st.sidebar.title("🔐 Login (Permanent)")
+st.sidebar.caption("ലോഗിൻ ചെയ്താൽ പിന്നീട് വെബ്സൈറ്റ് ക്ലോസ് ചെയ്താലും ലോഗൗട്ട് ആവില്ല.")
 
 if not st.session_state.logged_in:
     login_email = st.sidebar.text_input("📧 Email Address:", placeholder="example@gmail.com")
-    if st.sidebar.button("Login", use_container_width=True):
-        if login_email:
-            st.session_state.logged_in = True
-            st.session_state.user_email = login_email
-            st.rerun()
+    if st.sidebar.button("Login", use_container_width=True) and login_email:
+        controller.set('user_email', login_email) # Saves to Browser Cookie!
+        st.session_state.logged_in = True
+        st.session_state.user_email = login_email
+        st.rerun()
 else:
-    st.sidebar.success(f"👤 ലോഗിൻ ചെയ്തു:\n{st.session_state.user_email}")
+    st.sidebar.success(f"👤 {st.session_state.user_email}")
     if st.sidebar.button("Logout", use_container_width=True):
+        controller.remove('user_email') # Deletes the Cookie
         st.session_state.logged_in = False
         st.session_state.user_email = ""
+        st.session_state.current_session_id = str(uuid.uuid4())
         st.rerun()
         
-    st.sidebar.markdown("### 🕒 നിങ്ങളുടെ ഹിസ്റ്ററി")
-    past_chats = get_history(st.session_state.user_email)
-    if past_chats:
-        for chat in past_chats:
-            with st.sidebar.expander(f"📝 {chat[1][:25]}..."):
-                st.write(chat[2][:100] + "...")
-    else:
-        st.sidebar.caption("പഴയ ചാറ്റുകൾ ലഭ്യമല്ല.")
-st.sidebar.markdown("---")
-st.sidebar.markdown("<p style='text-align: center; color: red;'>Created by <b>Vishnu</b> 💻</p>", unsafe_allow_html=True)
+    st.sidebar.markdown("### 🕒 നിന്റെ ചാറ്റുകൾ")
+    if st.sidebar.button("➕ New Chat", use_container_width=True):
+        st.session_state.current_session_id = str(uuid.uuid4())
+        st.session_state.app_mode_select = "5. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)"
+        st.rerun()
 
-# Dynamic CSS Injection
+    sessions = get_chat_sessions(st.session_state.user_email)
+    if sessions:
+        for sess_id, title in sessions:
+            # Clicking a past chat automatically switches to Chatbot UI
+            if st.sidebar.button(f"💬 {title}", key=f"btn_{sess_id}", use_container_width=True):
+                st.session_state.current_session_id = sess_id
+                st.session_state.app_mode_select = "5. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)"
+                st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("<p style='text-align: center; color: gray;'>Created by <b>Vishnu</b> 💻</p>", unsafe_allow_html=True)
+
+# Dynamic CSS
 st.markdown(f"""
     <style>
     .stApp {{ background-color: {current_theme['bg']} !important; color: {current_theme['text']} !important; }}
     .stApp, p, span, div, label, h1, h2, h3, h4 {{ color: {current_theme['text']} !important; }}
-    .main-card {{
-        background-color: {current_theme['card']};
-        border: 1px solid {current_theme['border']};
-        border-radius: 16px;
-        padding: 24px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-        margin-bottom: 20px;
-    }}
-    .stButton>button {{
-        background: linear-gradient(135deg, {current_theme['accent']}, {current_theme['border']}) !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 12px 24px !important;
-        font-weight: 700 !important;
-    }}
+    .main-card {{ background-color: {current_theme['card']}; border: 1px solid {current_theme['border']}; border-radius: 16px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); margin-bottom: 20px; }}
+    .stButton>button {{ background: linear-gradient(135deg, {current_theme['accent']}, {current_theme['border']}) !important; color: #FFFFFF !important; border: none !important; border-radius: 12px !important; padding: 12px 24px !important; font-weight: 700 !important; }}
     </style>
 """, unsafe_allow_html=True)
-
-# Stop execution if API key is not provided
-if not st.session_state.api_key:
-    st.warning("⚠️ ആപ്പ് ഉപയോഗിക്കാൻ സൈഡ്‌ബാറിൽ നിങ്ങളുടെ Gemini API Key നൽകുക.")
-    st.stop()
-
-# Initialize Model (Using 3.6 Flash)
-model = genai.GenerativeModel('gemini-3.6-flash')
 
 st.markdown(f"<h1 style='text-align: center; color: {current_theme['accent']};'>SSLC AI Master 🎓</h1>", unsafe_allow_html=True)
 st.write("---")
 
-# ---------------------------------------------------------
+# =============================================================================
 # 0. PDF / Notes Chat
-# ---------------------------------------------------------
-if app_mode == "0. പാഠപുസ്തകം / നോട്ട്സ് (PDF Chat)":
+# =============================================================================
+if app_mode == "1. പാഠപുസ്തകം / നോട്ട്സ് (PDF Chat)":
     st.header("📄 PDF നോട്ട്സ് അനാലിസിസ്")
     st.markdown("<div class='main-card'>", unsafe_allow_html=True)
-    
     pdf_text = ""
     upload_method = st.radio("എങ്ങനെയാണ് നോട്ട്സ് നൽകുന്നത്?", ("വേണ്ട (ചോദ്യം മാത്രം)", "PDF അപ്‌ലോഡ് ചെയ്യുക", "Google Drive ലിങ്ക് നൽകുക"))
-    
     if upload_method == "PDF അപ്‌ലോഡ് ചെയ്യുക":
         uploaded_pdf = st.file_uploader("📄 പാഠപുസ്തകം (PDF):", type=["pdf"])
-        if uploaded_pdf is not None:
-            pdf_text = extract_text_from_pdf(uploaded_pdf)
-            st.success("✅ PDF വായിച്ചെടുത്തു!")
-            
+        if uploaded_pdf: pdf_text = extract_text_from_pdf(uploaded_pdf)
     elif upload_method == "Google Drive ലിങ്ക് നൽകുക":
         gdrive_url = st.text_input("🔗 ഗൂഗിൾ ഡ്രൈവ് ലിങ്ക്:")
         if gdrive_url:
             with st.spinner("ഡൗൺലോഡ് ചെയ്യുന്നു..."):
                 pdf_bytes, status = download_gdrive_pdf(gdrive_url)
-                if pdf_bytes:
-                    pdf_text = extract_text_from_pdf(pdf_bytes)
-                    st.success("✅ PDF വായിച്ചെടുത്തു!")
-                else:
-                    st.error(status)
-                    
+                if pdf_bytes: pdf_text = extract_text_from_pdf(pdf_bytes)
     user_input = st.text_area("ചോദ്യം നൽകുക:", height=120)
     st.markdown("</div>", unsafe_allow_html=True)
     
     if st.button("ഉത്തരം കണ്ടെത്തുക 🚀"):
         if user_input or pdf_text:
-            combined_input = user_input
-            if pdf_text:
-                combined_input += f"\n\nContext:\n{pdf_text[:4000]}"
-                
-            prompt = f"Act as an expert Kerala SSLC teacher. Explain the topic simply. Write the ENGLISH point first, then MALAYALAM translation below it. Topic: {combined_input}"
-            
+            combined_input = user_input + (f"\n\nContext:\n{pdf_text[:4000]}" if pdf_text else "")
             with st.spinner('AI ഉത്തരം തയ്യാറാക്കുന്നു...'):
                 try:
-                    response = model.generate_content(prompt)
-                    if st.session_state.logged_in:
-                        save_chat(st.session_state.user_email, user_input if user_input else "PDF Analysis", combined_input, response.text)
-                    
-                    st.success("✅ ഉത്തരം ലഭിച്ചു!")
-                    st.write(response.text)
-                    st.markdown("---")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.download_button("📄 Download Doc", create_docx(response.text), "Notes.docx")
-                        if st.button("🎧 കേൾക്കാം"):
-                            with st.spinner("ഓഡിയോ തയ്യാറാക്കുന്നു..."):
-                                audio_bytes = create_audio_improved(response.text)
-                                if audio_bytes:
-                                    st.audio(audio_bytes, format='audio/mp3')
-                                else:
-                                    st.error("ഓഡിയോ ഉണ്ടാക്കുന്നതിൽ തകരാർ.")
-                    with col2:
-                        with st.expander("📝 കോപ്പി ചെയ്യാൻ"):
-                            st.code(response.text, language='text')
-                except Exception as e:
-                    st.error(f"Error: {e}")
-        else:
-            st.warning("ചോദ്യം നൽകുക!")
+                    response = model.generate_content(f"Act as an expert Kerala SSLC teacher. Explain the topic simply. Topic: {combined_input}")
+                    st.session_state.out_0 = response.text
+                except Exception as e: st.error(f"Error: {e}")
+                
+    if st.session_state.out_0:
+        st.write(st.session_state.out_0)
+        render_smart_actions(st.session_state.out_0, "0")
 
-# ---------------------------------------------------------
+# =============================================================================
 # 1. Image Analysis
-# ---------------------------------------------------------
-elif app_mode == "1. ചിത്രങ്ങൾ നൽകി പഠിക്കാം (Image Analysis)":
+# =============================================================================
+elif app_mode == "2. ചിത്രങ്ങൾ നൽകി പഠിക്കാം (Image Analysis)":
     st.header("📷 ചിത്രങ്ങൾ നൽകി പഠിക്കാം")
     uploaded_file = st.file_uploader("ചിത്രം അപ്‌ലോഡ് ചെയ്യുക", type=["jpg", "png", "jpeg"])
     if uploaded_file is not None:
@@ -271,58 +287,118 @@ elif app_mode == "1. ചിത്രങ്ങൾ നൽകി പഠിക്ക
             with st.spinner("പരിശോധിക്കുന്നു..."):
                 try:
                     response = model.generate_content([prompt if prompt else "വിശദീകരിച്ചു തരുക (മലയാളത്തിൽ).", image])
-                    st.write(response.text)
-                except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.session_state.out_1 = response.text
+                except Exception as e: st.error(f"Error: {e}")
+                
+    if st.session_state.out_1:
+        st.write(st.session_state.out_1)
+        render_smart_actions(st.session_state.out_1, "1")
 
-# ---------------------------------------------------------
+# =============================================================================
 # 2. Mock Test
-# ---------------------------------------------------------
-elif app_mode == "2. AI Mock Test (ക്വിസ്)":
+# =============================================================================
+elif app_mode == "3. AI Mock Test (ക്വിസ്)":
     st.header("📝 സ്വയം പരീക്ഷിക്കാം")
     topic = st.text_input("ഏത് വിഷയത്തിലാണ് ടെസ്റ്റ് വേണ്ടത്?")
-    if "quiz_data" not in st.session_state:
-        st.session_state.quiz_data = None
-
+    if "quiz_data" not in st.session_state: st.session_state.quiz_data = None
+    
     if st.button("ക്വിസ് തുടങ്ങുക"):
         if topic:
             with st.spinner("ചോദ്യങ്ങൾ തയ്യാറാക്കുന്നു..."):
-                quiz_prompt = f"Create a 5-question multiple choice quiz on '{topic}' for 10th-grade. Return ONLY a valid JSON array of objects. Format: [{{\"question\": \"Q in Malayalam\", \"options\": [\"o1\", \"o2\", \"o3\", \"o4\"], \"answer\": \"correct_opt\"}}]"
                 try:
-                    response = model.generate_content(quiz_prompt)
-                    json_text = response.text.strip().replace('```json', '').replace('```', '')
-                    st.session_state.quiz_data = json.loads(json_text)
-                except Exception as e:
-                    st.error(f"Error: {e}")
-
+                    response = model.generate_content(f"Create a 5-question multiple choice quiz on '{topic}' for 10th-grade. Return ONLY a valid JSON array of objects. Format: [{{\"question\": \"Q in Malayalam\", \"options\": [\"o1\", \"o2\", \"o3\", \"o4\"], \"answer\": \"correct_opt\"}}]")
+                    st.session_state.quiz_data = json.loads(response.text.strip().replace('```json', '').replace('```', ''))
+                    quiz_str = f"📝 Mock Test: {topic}\n\n"
+                    for i, q in enumerate(st.session_state.quiz_data): quiz_str += f"Q{i+1}: {q['question']}\nAns: {q['answer']}\n\n"
+                    st.session_state.out_2 = quiz_str
+                except Exception as e: st.error(f"Error: {e}")
+                
     if st.session_state.quiz_data:
         user_answers = {}
         for i, q in enumerate(st.session_state.quiz_data):
             user_answers[i] = st.radio(f"{i+1}. {q['question']}", q['options'], key=f"q_{i}")
-        
         if st.button("പരിശോധിക്കുക"):
             score = sum([1 for i, q in enumerate(st.session_state.quiz_data) if user_answers[i] == q['answer']])
             st.header(f"സ്കോർ: {score}/5")
+            st.success("ഉത്തരങ്ങൾ താഴെ സേവ് ചെയ്യാം!")
+            
+    if st.session_state.out_2:
+        render_smart_actions(st.session_state.out_2, "2")
 
-# ---------------------------------------------------------
-# 3. Voice Input
-# ---------------------------------------------------------
-elif app_mode == "3. വോയിസ് ഇൻപുട്ട് (സംസാരിച്ച് ചോദിക്കാം)":
+# =============================================================================
+# 3. Voice Input (Live Speech-to-Text Setup)
+# =============================================================================
+elif app_mode == "4. വോയിസ് ഇൻപുട്ട് (സംസാരിച്ച് ചോദിക്കാം)":
     st.header("🎙️ സംസാരിച്ച് ചോദ്യം ചോദിക്കാം")
-    text = speech_to_text(language='ml-IN', use_container_width=True, just_once=True, key='STT')
-    if text:
-        st.info(f"ചോദ്യം: **{text}**")
+    
+    components_html = """
+    <div style="text-align: center; margin-top: 20px;">
+        <button id="start-btn" style="padding: 15px 30px; font-size: 18px; border-radius: 50px; background-color: #6366F1; color: white; border: none; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🎙️ സംസാരിക്കാൻ തുടങ്ങുക</button>
+        <p id="status" style="color: gray; margin-top: 10px;">മൈക്ക് ഓഫ് ആണ്.</p>
+        <textarea id="output" rows="4" style="width: 100%; padding: 10px; font-size: 16px; border-radius: 10px; border: 1px solid #ccc; margin-top: 10px;" placeholder="നിങ്ങൾ പറയുന്നത് ഇവിടെ തനിയെ ടൈപ്പ് ചെയ്യപ്പെടും..."></textarea>
+    </div>
+    <script>
+        const startBtn = document.getElementById('start-btn');
+        const statusTxt = document.getElementById('status');
+        const outputBox = document.getElementById('output');
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'ml-IN'; 
+            
+            let isRecording = false;
+            
+            startBtn.addEventListener('click', () => {
+                if(!isRecording) {
+                    recognition.start();
+                    startBtn.innerText = "🛑 നിർത്തുക";
+                    startBtn.style.backgroundColor = "#EF4444";
+                    statusTxt.innerText = "ശ്രദ്ധിക്കുന്നു... സംസാരിച്ചോളൂ!";
+                    isRecording = true;
+                } else {
+                    recognition.stop();
+                    startBtn.innerText = "🎙️ സംസാരിക്കാൻ തുടങ്ങുക";
+                    startBtn.style.backgroundColor = "#6366F1";
+                    statusTxt.innerText = "റെക്കോർഡിങ് നിർത്തി. താഴെ കാണുന്ന ചോദ്യം കോപ്പി ചെയ്തു AI-ക്ക് നൽകുക.";
+                    isRecording = false;
+                }
+            });
+            
+            recognition.onresult = (event) => {
+                let transcript = '';
+                for (let i = 0; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                outputBox.value = transcript;
+            };
+        } else {
+            statusTxt.innerText = "നിങ്ങളുടെ ബ്രൗസറിൽ ഈ ഫീച്ചർ സപ്പോർട്ട് ചെയ്യുന്നില്ല.";
+        }
+    </script>
+    """
+    st.components.v1.html(components_html, height=250)
+    
+    st.info("👆 മുകളിൽ റെക്കോർഡ് ചെയ്ത ചോദ്യം താഴെയുള്ള ബോക്സിൽ നൽകുക:")
+    voice_query = st.text_input("ചോദ്യം ഇവിടെ പേസ്റ്റ് ചെയ്യുക:")
+    
+    if st.button("ഉത്തരം കണ്ടെത്തുക"):
         with st.spinner("കണ്ടെത്തുന്നു..."):
             try:
-                response = model.generate_content(f"Answer in Malayalam: {text}")
-                st.write(response.text)
-            except Exception as e:
-                st.error(f"Error: {e}")
+                response = model.generate_content(f"Answer in Malayalam: {voice_query}")
+                st.session_state.out_3 = response.text
+            except Exception as e: st.error(f"Error: {e}")
+            
+    if st.session_state.out_3:
+        st.write(st.session_state.out_3)
+        render_smart_actions(st.session_state.out_3, "3")
 
-# ---------------------------------------------------------
+# =============================================================================
 # 4. YouTube Summarizer
-# ---------------------------------------------------------
-elif app_mode == "4. YouTube Video Summarizer":
+# =============================================================================
+elif app_mode == "5. YouTube Video Summarizer":
     st.header("📺 YouTube ക്ലാസ്സ് നോട്ട്സ്")
     yt_url = st.text_input("YouTube Link നൽകുക:")
     if st.button("Summary തയ്യാറാക്കുക") and yt_url:
@@ -331,38 +407,51 @@ elif app_mode == "4. YouTube Video Summarizer":
             video_id = parsed_url.path[1:] if parsed_url.hostname == 'youtu.be' else urllib.parse.parse_qs(parsed_url.query)['v'][0]
             with st.spinner("ശേഖരിക്കുന്നു..."):
                 transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ml'])
-                transcript_text = " ".join([i['text'] for i in transcript])
-                response = model.generate_content(f"Summarize in Malayalam bullet points:\n\n{transcript_text[:5000]}")
-                st.write(response.text)
-        except Exception as e:
-            st.error("സബ്ടൈറ്റിലുകൾ ലഭ്യമല്ല.")
+                response = model.generate_content(f"Summarize in Malayalam bullet points:\n\n{' '.join([i['text'] for i in transcript])[:5000]}")
+                st.session_state.out_4 = response.text
+        except Exception as e: st.error("സബ്ടൈറ്റിലുകൾ ലഭ്യമല്ല.")
+        
+    if st.session_state.out_4:
+        st.write(st.session_state.out_4)
+        render_smart_actions(st.session_state.out_4, "4")
 
-# ---------------------------------------------------------
-# 5. Chatbot UI
-# ---------------------------------------------------------
-elif app_mode == "5. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)":
+# =============================================================================
+# 5. Chatbot UI (With Memory & Smart Actions)
+# =============================================================================
+elif app_mode == "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)":
     st.header("💬 AI Study Assistant")
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-    if prompt := st.chat_input("ചോദ്യം ചോദിക്കുക..."):
+    session_id = st.session_state.current_session_id
+    db_messages = get_chat_messages(session_id)
+    
+    # 1. പഴയ ചാറ്റുകൾ സ്ക്രീനിൽ കാണിക്കുക
+    for role, content in db_messages:
+        with st.chat_message(role): st.markdown(content)
+
+    # 2. പുതിയ ചോദ്യം ചോദിക്കുക
+    if prompt := st.chat_input("നിങ്ങളുടെ സംശയം ചോദിക്കുക..."):
         st.chat_message("user").markdown(prompt)
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        if st.session_state.logged_in: save_chat_message(session_id, st.session_state.user_email, "user", prompt)
+
+        # 3. AI-ക്ക് ഓർമ്മ കൊടുക്കുക (Gemini History)
+        gemini_history = [{"role": "model" if r == "assistant" else "user", "parts": [c]} for r, c in db_messages]
+
         with st.spinner("ചിന്തിക്കുന്നു..."):
             try:
-                response = model.generate_content(prompt)
-                with st.chat_message("assistant"):
-                    st.markdown(response.text)
-                st.session_state.messages.append({"role": "assistant", "content": response.text})
-            except Exception as e:
-                st.error(f"Error: {e}")
+                chat_session = model.start_chat(history=gemini_history)
+                response = chat_session.send_message(prompt)
+                st.session_state.out_5 = response.text
+                with st.chat_message("assistant"): st.markdown(response.text)
+                if st.session_state.logged_in: save_chat_message(session_id, st.session_state.user_email, "assistant", response.text)
+            except Exception as e: st.error(f"Error: {e}")
 
-# ---------------------------------------------------------
+    # 4. ഏറ്റവും പുതിയ ഉത്തരത്തിന് താഴെ ബട്ടണുകൾ കാണിക്കുക
+    if st.session_state.out_5:
+        render_smart_actions(st.session_state.out_5, "5")
+
+# =============================================================================
 # 6. Study Planner
-# ---------------------------------------------------------
-elif app_mode == "6. സ്റ്റഡി പ്ലാനർ (Study Planner)":
+# =============================================================================
+elif app_mode == "7. സ്റ്റഡി പ്ലാനർ (Study Planner)":
     st.header("📅 സ്റ്റഡി പ്ലാനർ")
     days = st.number_input("ദിവസങ്ങൾ?", min_value=1, value=30)
     hours = st.number_input("മണിക്കൂർ?", min_value=1, value=3)
@@ -371,27 +460,39 @@ elif app_mode == "6. സ്റ്റഡി പ്ലാനർ (Study Planner)":
         with st.spinner("പ്ലാൻ തയ്യാറാക്കുന്നു..."):
             try:
                 response = model.generate_content(f"Create a study timetable in Markdown. Days: {days}, Hours: {hours}, Subjects: {subjects}. Explain strategy in Malayalam.")
-                st.markdown(response.text)
-            except Exception as e:
-                st.error(f"Error: {e}")
+                st.session_state.out_6 = response.text
+            except Exception as e: st.error(f"Error: {e}")
+            
+    if st.session_state.out_6:
+        st.markdown(st.session_state.out_6)
+        render_smart_actions(st.session_state.out_6, "6")
 
-# ---------------------------------------------------------
+# =============================================================================
 # 7. Flash Cards
-# ---------------------------------------------------------
-elif app_mode == "7. ഫ്ലാഷ് കാർഡുകൾ (Quick Revision)":
+# =============================================================================
+elif app_mode == "8. ഫ്ലാഷ് കാർഡുകൾ (Quick Revision)":
     st.header("⚡ ഫ്ലാഷ് കാർഡുകൾ")
     flash_topic = st.text_input("ഏത് വിഷയമാണ് റിവിഷൻ ചെയ്യേണ്ടത്?")
+    if "flash_cards_data" not in st.session_state: st.session_state.flash_cards_data = None
+    
     if st.button("തയ്യാറാക്കുക") and flash_topic:
         with st.spinner("ഉണ്ടാക്കുന്നു..."):
             try:
-                flash_prompt = f"Create 10 key flashcards for '{flash_topic}' for 10th-grade. Provide the explanation in BOTH English and Malayalam. Format strictly as JSON array: [{{\"title\": \"Concept\", \"description\": \"English explanation.\\n\\nമലയാളം വിവരണം.\"}}]"
+                flash_prompt = f"Create 6 key flashcards for '{flash_topic}' for 10th-grade. Provide explanation in BOTH English and Malayalam. Format strictly as JSON array: [{{\"title\": \"Concept\", \"description\": \"English.\\n\\nമലയാളം.\"}}]"
                 response = model.generate_content(flash_prompt)
-                cards = json.loads(response.text.strip().replace('```json', '').replace('```', ''))
-                cols = st.columns(3)
-                for idx, card in enumerate(cards):
-                    with cols[idx % 3]:
-                        with st.container(border=True):
-                            st.subheader(card['title'])
-                            st.write(card['description'])
-            except Exception as e:
-                st.error("പിഴവ് സംഭവിച്ചു.")
+                st.session_state.flash_cards_data = json.loads(response.text.strip().replace('```json', '').replace('```', ''))
+                cards_str = f"⚡ ഫ്ലാഷ് കാർഡുകൾ: {flash_topic}\n\n"
+                for card in st.session_state.flash_cards_data: cards_str += f"📌 {card['title']}\n{card['description']}\n\n"
+                st.session_state.out_7 = cards_str
+            except Exception as e: st.error("പിഴവ് സംഭവിച്ചു.")
+            
+    if st.session_state.flash_cards_data:
+        cols = st.columns(3)
+        for idx, card in enumerate(st.session_state.flash_cards_data):
+            with cols[idx % 3]:
+                with st.container(border=True):
+                    st.subheader(card['title'])
+                    st.write(card['description'])
+                    
+    if st.session_state.out_7:
+        render_smart_actions(st.session_state.out_7, "7")
