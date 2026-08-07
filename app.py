@@ -384,7 +384,7 @@ elif app_mode == "7. ഫ്ലാഷ് കാർഡുകൾ (Quick Revision)":
     if st.button("തയ്യാറാക്കുക") and flash_topic:
         with st.spinner("ഉണ്ടാക്കുന്നു..."):
             try:
-                flash_prompt = f"Create 6 key flashcards for '{flash_topic}' for 10th-grade. Format strictly as JSON array: [{{\"title\": \"Concept\", \"description\": \"Malayalam explanation\"}}]"
+                flash_prompt = f"Create 10 key flashcards for '{flash_topic}' for 10th-grade. Provide the explanation in BOTH English and Malayalam. Format strictly as JSON array: [{{\"title\": \"Concept\", \"description\": \"English explanation.\\n\\nമലയാളം വിവരണം.\"}}]"
                 response = model.generate_content(flash_prompt)
                 cards = json.loads(response.text.strip().replace('```json', '').replace('```', ''))
                 cols = st.columns(3)
