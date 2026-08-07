@@ -8,3 +8,4 @@ youtube-transcript-api
 streamlit-mic-recorder
 requests
 fpdf
+streamlit-cookies-controller
