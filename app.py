@@ -153,6 +153,8 @@ else:
                 st.write(chat[2][:100] + "...")
     else:
         st.sidebar.caption("പഴയ ചാറ്റുകൾ ലഭ്യമല്ല.")
+st.sidebar.markdown("---")
+    st.sidebar.markdown("<p style='text-align: center; color: red;'>Created by <b>Vishnu</b> 💻</p>", unsafe_allow_html=True)
 
 # Dynamic CSS Injection
 st.markdown(f"""
