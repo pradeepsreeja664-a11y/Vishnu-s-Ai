@@ -62,6 +62,31 @@ THEMES = {
     "4. Classic Light": {"bg": "#F8FAFC", "card": "#FFFFFF", "text": "#0F172A", "accent": "#2563EB", "border": "#E2E8F0"},
 }
 
+# 3. Extensive Voice Dictionary (English & Malayalam)
+VOICES = {
+    "മലയാളം - ശോഭന (Malayalam Female)": "ml-IN-SobhanaNeural",
+    "മലയാളം - മിഥുൻ (Malayalam Male)": "ml-IN-MidhunNeural",
+    "English (India) - Neerja (Female)": "en-IN-NeerjaNeural",
+    "English (India) - Prabhat (Male)": "en-IN-PrabhatNeural",
+    "English (US) - Aria (Female)": "en-US-AriaNeural",
+    "English (US) - Guy (Male)": "en-US-GuyNeural",
+    "English (US) - Jenny (Female)": "en-US-JennyNeural",
+    "English (US) - Christopher (Male)": "en-US-ChristopherNeural",
+    "English (US) - Michelle (Female)": "en-US-MichelleNeural",
+    "English (US) - Eric (Male)": "en-US-EricNeural",
+    "English (US) - Roger (Male)": "en-US-RogerNeural",
+    "English (UK) - Sonia (Female)": "en-GB-SoniaNeural",
+    "English (UK) - Ryan (Male)": "en-GB-RyanNeural",
+    "English (UK) - Libby (Female)": "en-GB-LibbyNeural",
+    "English (UK) - Thomas (Male)": "en-GB-ThomasNeural",
+    "English (Australia) - Natasha (Female)": "en-AU-NatashaNeural",
+    "English (Australia) - William (Male)": "en-AU-WilliamNeural",
+    "English (Canada) - Clara (Female)": "en-CA-ClaraNeural",
+    "English (Canada) - Liam (Male)": "en-CA-LiamNeural",
+    "English (South Africa) - Leah (Female)": "en-ZA-LeahNeural",
+    "English (South Africa) - Luke (Male)": "en-ZA-LukeNeural"
+}
+
 # --- Session States ---
 if "logged_in" not in st.session_state: 
     st.session_state.logged_in = False
@@ -69,6 +94,9 @@ if "logged_in" not in st.session_state:
 
 if "current_session_id" not in st.session_state: 
     st.session_state.current_session_id = str(uuid.uuid4())
+    
+if "selected_voice" not in st.session_state:
+    st.session_state.selected_voice = "ml-IN-SobhanaNeural"
 
 # Persistent Login Check (Auto-Login from Cookie)
 if not st.session_state.logged_in:
@@ -77,7 +105,7 @@ if not st.session_state.logged_in:
         st.session_state.logged_in = True
         st.session_state.user_email = cookie_email
 
-# Output states for ALL 8 features
+# Output states for ALL 8 features to prevent text from disappearing
 for i in range(8):
     if f"out_{i}" not in st.session_state:
         st.session_state[f"out_{i}"] = ""
@@ -106,9 +134,9 @@ def create_pdf(text):
         return bytes(pdf.output(dest='S'))
     except Exception: return b""
 
-def create_audio_improved(text):
+def create_audio_improved(text, voice):
     async def _generate():
-        communicate = edge_tts.Communicate(text, "ml-IN-SobhanaNeural")
+        communicate = edge_tts.Communicate(text, voice)
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
         await communicate.save(temp_file.name)
         return temp_file.name
@@ -129,7 +157,7 @@ def render_smart_actions(text_content, feature_id):
     with col3:
         if st.button("🎧 ഓഡിയോ കേൾക്കാം", key=f"audio_{feature_id}"):
             with st.spinner("ഓഡിയോ തയ്യാറാക്കുന്നു..."):
-                audio_bytes = create_audio_improved(text_content)
+                audio_bytes = create_audio_improved(text_content, st.session_state.selected_voice)
                 if audio_bytes: st.audio(audio_bytes, format='audio/mp3')
                 else: st.error("ഓഡിയോ ഉണ്ടാക്കുന്നതിൽ തകരാർ.")
     with col4:
@@ -152,20 +180,20 @@ def download_gdrive_pdf(url):
     except Exception as e: return None, f"Error: {str(e)}"
 
 # ==========================================
-# 🔑 API KEY CONFIGURATION (Streamlit Secrets)
+# 🔑 API KEY CONFIGURATION
 # ==========================================
+MY_GEMINI_API_KEY = "AIzaSyB-YOUR_API_KEY_HERE" # <--- നിന്റെ API Key ഇവിടെ പേസ്റ്റ് ചെയ്യുക
+
 try:
-    # Streamlit secrets-ൽ നിന്നും API key സുരക്ഷിതമായി എടുക്കുന്നു
-    api_key_to_use = st.secrets["GEMINI_API_KEY"]
-except KeyError:
-    # Secrets-ൽ API key ഇല്ലെങ്കിൽ മാത്രം ഈ എറർ കാണിക്കും
-    st.error("⚠️ API Key കണ്ടെത്തിയില്ല! ദയവായി Streamlit Secrets-ൽ 'GEMINI_API_KEY' സെറ്റ് ചെയ്യുക.")
+    api_key_to_use = st.secrets.get("GEMINI_API_KEY", MY_GEMINI_API_KEY)
+except:
+    api_key_to_use = MY_GEMINI_API_KEY
+
+if api_key_to_use == "AIzaSyB-YOUR_API_KEY_HERE":
+    st.error("⚠️ കോഡിൽ API Key നൽകിയിട്ടില്ല! app.py ഫയലിൽ വരി നമ്പർ 151-ൽ നിന്റെ API Key നൽകുക.")
     st.stop()
 
-# API Key കോൺഫിഗർ ചെയ്യുന്നു
 genai.configure(api_key=api_key_to_use)
-
-# ശരിയായ മോഡൽ പേര് നൽകുന്നു (gemini-3.6-flash തെറ്റാണ്, പകരം gemini-1.5-flash ഉപയോഗിക്കുക)
 model = genai.GenerativeModel('gemini-3.6-flash')
 
 
@@ -189,6 +217,19 @@ with st.sidebar.expander("🎨 Appearance (Theme)"):
     selected_theme_name = st.selectbox("തീം തിരഞ്ഞെടുക്കുക:", list(THEMES.keys()))
     current_theme = THEMES[selected_theme_name]
 
+# --- NEW: Voice Selection & Preview ---
+st.sidebar.markdown("---")
+st.sidebar.title("🔊 Audio Settings")
+selected_voice_name = st.sidebar.selectbox("വോയിസ് തിരഞ്ഞെടുക്കുക:", list(VOICES.keys()))
+st.session_state.selected_voice = VOICES[selected_voice_name]
+
+if st.sidebar.button("▶️ Test Voice (മുൻകൂട്ടി കേൾക്കാം)", use_container_width=True):
+    with st.spinner("തയ്യാറാക്കുന്നു..."):
+        test_text = "നമസ്കാരം, ഇത് എന്റെ ശബ്ദമാണ്. നിങ്ങളുടെ പഠനത്തിനായി ഞാൻ സഹായിക്കാം." if "Malayalam" in selected_voice_name else "Hello there! This is a sample of my voice. I am ready to help you with your studies."
+        test_audio = create_audio_improved(test_text, st.session_state.selected_voice)
+        if test_audio:
+            st.sidebar.audio(test_audio, format='audio/mp3')
+
 st.sidebar.markdown("---")
 st.sidebar.title("🔐 Login (Permanent)")
 st.sidebar.caption("ലോഗിൻ ചെയ്താൽ പിന്നീട് വെബ്സൈറ്റ് ക്ലോസ് ചെയ്താലും ലോഗൗട്ട് ആവില്ല.")
@@ -196,14 +237,14 @@ st.sidebar.caption("ലോഗിൻ ചെയ്താൽ പിന്നീട�
 if not st.session_state.logged_in:
     login_email = st.sidebar.text_input("📧 Email Address:", placeholder="example@gmail.com")
     if st.sidebar.button("Login", use_container_width=True) and login_email:
-        controller.set('user_email', login_email) # Saves to Browser Cookie!
+        controller.set('user_email', login_email)
         st.session_state.logged_in = True
         st.session_state.user_email = login_email
         st.rerun()
 else:
     st.sidebar.success(f"👤 {st.session_state.user_email}")
     if st.sidebar.button("Logout", use_container_width=True):
-        controller.remove('user_email') # Deletes the Cookie
+        controller.remove('user_email')
         st.session_state.logged_in = False
         st.session_state.user_email = ""
         st.session_state.current_session_id = str(uuid.uuid4())
@@ -218,7 +259,6 @@ else:
     sessions = get_chat_sessions(st.session_state.user_email)
     if sessions:
         for sess_id, title in sessions:
-            # Clicking a past chat automatically switches to Chatbot UI
             if st.sidebar.button(f"💬 {title}", key=f"btn_{sess_id}", use_container_width=True):
                 st.session_state.current_session_id = sess_id
                 st.session_state.app_mode_select = "5. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)"
@@ -421,18 +461,20 @@ elif app_mode == "5. YouTube Video Summarizer":
 elif app_mode == "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)":
     st.header("💬 AI Study Assistant")
     session_id = st.session_state.current_session_id
+    
+    # Guest email tracking to fix disappearing chat when creating audio[cite: 2]
+    current_email = st.session_state.user_email if st.session_state.logged_in else f"guest_{session_id}"
+    
     db_messages = get_chat_messages(session_id)
     
-    # 1. പഴയ ചാറ്റുകൾ സ്ക്രീനിൽ കാണിക്കുക
     for role, content in db_messages:
         with st.chat_message(role): st.markdown(content)
 
-    # 2. പുതിയ ചോദ്യം ചോദിക്കുക
     if prompt := st.chat_input("നിങ്ങളുടെ സംശയം ചോദിക്കുക..."):
         st.chat_message("user").markdown(prompt)
-        if st.session_state.logged_in: save_chat_message(session_id, st.session_state.user_email, "user", prompt)
+        # Now automatically saves the state even if not logged in
+        save_chat_message(session_id, current_email, "user", prompt)
 
-        # 3. AI-ക്ക് ഓർമ്മ കൊടുക്കുക (Gemini History)
         gemini_history = [{"role": "model" if r == "assistant" else "user", "parts": [c]} for r, c in db_messages]
 
         with st.spinner("ചിന്തിക്കുന്നു..."):
@@ -441,10 +483,10 @@ elif app_mode == "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)":
                 response = chat_session.send_message(prompt)
                 st.session_state.out_5 = response.text
                 with st.chat_message("assistant"): st.markdown(response.text)
-                if st.session_state.logged_in: save_chat_message(session_id, st.session_state.user_email, "assistant", response.text)
+                save_chat_message(session_id, current_email, "assistant", response.text)
             except Exception as e: st.error(f"Error: {e}")
 
-    # 4. ഏറ്റവും പുതിയ ഉത്തരത്തിന് താഴെ ബട്ടണുകൾ കാണിക്കുക
+    # Show smart actions for the LAST AI response
     if st.session_state.out_5:
         render_smart_actions(st.session_state.out_5, "5")
 
@@ -478,7 +520,7 @@ elif app_mode == "8. ഫ്ലാഷ് കാർഡുകൾ (Quick Revision)":
     if st.button("തയ്യാറാക്കുക") and flash_topic:
         with st.spinner("ഉണ്ടാക്കുന്നു..."):
             try:
-                flash_prompt = f"Create 6 key flashcards for '{flash_topic}' for 10th-grade. Provide explanation in BOTH English and Malayalam. Format strictly as JSON array: [{{\"title\": \"Concept\", \"description\": \"English.\\n\\nമലയാളം.\"}}]"
+                flash_prompt = f"Create 10 key flashcards for '{flash_topic}' for 10th-grade. Provide explanation in BOTH English and Malayalam. Format strictly as JSON array: [{{\"title\": \"Concept\", \"description\": \"English.\\n\\nമലയാളം.\"}}]"
                 response = model.generate_content(flash_prompt)
                 st.session_state.flash_cards_data = json.loads(response.text.strip().replace('```json', '').replace('```', ''))
                 cards_str = f"⚡ ഫ്ലാഷ് കാർഡുകൾ: {flash_topic}\n\n"
