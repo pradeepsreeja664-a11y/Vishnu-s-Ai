@@ -85,6 +85,7 @@ VOICES = {
     "English (Canada) - Liam (Male)": "en-CA-LiamNeural",
     "English (South Africa) - Leah (Female)": "en-ZA-LeahNeural",
     "English (South Africa) - Luke (Male)": "en-ZA-LukeNeural"
+}
 {
   "Azure Neural": {
     "മലയാളം - ശോഭന (Female)": "ml-IN-SobhanaNeural",
