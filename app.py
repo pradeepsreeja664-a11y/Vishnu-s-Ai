@@ -112,7 +112,7 @@ for i in range(8):
 
 # Navigation State
 if "app_mode_select" not in st.session_state:
-    st.session_state.app_mode_select = "0. പാഠപുസ്തകം / നോട്ട്സ് (PDF Chat)"
+    st.session_state.app_mode_select = "1. പാഠപുസ്തകം / നോട്ട്സ് (PDF Chat)"
 
 # --- Helper Functions (Downloads & Audio) ---
 def create_docx(text):
@@ -194,7 +194,7 @@ if api_key_to_use == "AIzaSyB-YOUR_API_KEY_HERE":
     st.stop()
 
 genai.configure(api_key=api_key_to_use)
-model = genai.GenerativeModel('gemini-3.6-flash')
+model = genai.GenerativeModel('gemini-1.5-flash') # Updated to a valid latest model
 
 
 # --- Sidebar Setup ---
@@ -253,7 +253,8 @@ else:
     st.sidebar.markdown("### 🕒 നിന്റെ ചാറ്റുകൾ")
     if st.sidebar.button("➕ New Chat", use_container_width=True):
         st.session_state.current_session_id = str(uuid.uuid4())
-        st.session_state.app_mode_select = "5. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)"
+        # FIXED BUG: Corrected to match the actual menu option string
+        st.session_state.app_mode_select = "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)" 
         st.rerun()
 
     sessions = get_chat_sessions(st.session_state.user_email)
@@ -261,7 +262,8 @@ else:
         for sess_id, title in sessions:
             if st.sidebar.button(f"💬 {title}", key=f"btn_{sess_id}", use_container_width=True):
                 st.session_state.current_session_id = sess_id
-                st.session_state.app_mode_select = "5. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)"
+                # FIXED BUG: Corrected to match the actual menu option string
+                st.session_state.app_mode_select = "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)" 
                 st.rerun()
 
 st.sidebar.markdown("---")
@@ -288,21 +290,26 @@ if app_mode == "1. പാഠപുസ്തകം / നോട്ട്സ് (PD
     st.markdown("<div class='main-card'>", unsafe_allow_html=True)
     pdf_text = ""
     upload_method = st.radio("എങ്ങനെയാണ് നോട്ട്സ് നൽകുന്നത്?", ("വേണ്ട (ചോദ്യം മാത്രം)", "PDF അപ്‌ലോഡ് ചെയ്യുക", "Google Drive ലിങ്ക് നൽകുക"))
+    
     if upload_method == "PDF അപ്‌ലോഡ് ചെയ്യുക":
-        uploaded_pdf = st.file_uploader("📄 പാഠപുസ്തകം (PDF):", type=["pdf"])
-        if uploaded_pdf: pdf_text = extract_text_from_pdf(uploaded_pdf)
+        # UPDATED: Allows up to 20 multiple files
+        uploaded_pdfs = st.file_uploader("📄 പാഠപുസ്തകം (PDF) - Max 20:", type=["pdf"], accept_multiple_files=True)
+        if uploaded_pdfs: 
+            for pdf in uploaded_pdfs[:20]:
+                pdf_text += extract_text_from_pdf(pdf) + "\n\n"
     elif upload_method == "Google Drive ലിങ്ക് നൽകുക":
         gdrive_url = st.text_input("🔗 ഗൂഗിൾ ഡ്രൈവ് ലിങ്ക്:")
         if gdrive_url:
             with st.spinner("ഡൗൺലോഡ് ചെയ്യുന്നു..."):
                 pdf_bytes, status = download_gdrive_pdf(gdrive_url)
                 if pdf_bytes: pdf_text = extract_text_from_pdf(pdf_bytes)
+                
     user_input = st.text_area("ചോദ്യം നൽകുക:", height=120)
     st.markdown("</div>", unsafe_allow_html=True)
     
     if st.button("ഉത്തരം കണ്ടെത്തുക 🚀"):
         if user_input or pdf_text:
-            combined_input = user_input + (f"\n\nContext:\n{pdf_text[:4000]}" if pdf_text else "")
+            combined_input = user_input + (f"\n\nContext:\n{pdf_text[:10000]}" if pdf_text else "")
             with st.spinner('AI ഉത്തരം തയ്യാറാക്കുന്നു...'):
                 try:
                     response = model.generate_content(f"Act as an expert Kerala SSLC teacher. Explain the topic simply. Topic: {combined_input}")
@@ -318,15 +325,25 @@ if app_mode == "1. പാഠപുസ്തകം / നോട്ട്സ് (PD
 # =============================================================================
 elif app_mode == "2. ചിത്രങ്ങൾ നൽകി പഠിക്കാം (Image Analysis)":
     st.header("📷 ചിത്രങ്ങൾ നൽകി പഠിക്കാം")
-    uploaded_file = st.file_uploader("ചിത്രം അപ്‌ലോഡ് ചെയ്യുക", type=["jpg", "png", "jpeg"])
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        st.image(image, use_container_width=True)
+    
+    # UPDATED: Allows up to 20 images
+    uploaded_files = st.file_uploader("ചിത്രങ്ങൾ അപ്‌ലോഡ് ചെയ്യുക (Max 20)", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
+    
+    if uploaded_files:
+        images_to_process = []
+        cols = st.columns(4) # To show thumbnail previews properly
+        for idx, file in enumerate(uploaded_files[:20]):
+            img = Image.open(file)
+            images_to_process.append(img)
+            with cols[idx % 4]: 
+                st.image(img, use_container_width=True)
+                
         prompt = st.text_input("എന്താണ് അറിയേണ്ടത്?")
         if st.button("കണ്ടെത്തുക"):
             with st.spinner("പരിശോധിക്കുന്നു..."):
                 try:
-                    response = model.generate_content([prompt if prompt else "വിശദീകരിച്ചു തരുക (മലയാളത്തിൽ).", image])
+                    content_list = [prompt if prompt else "വിശദീകരിച്ചു തരുക (മലയാളത്തിൽ)."] + images_to_process
+                    response = model.generate_content(content_list)
                     st.session_state.out_1 = response.text
                 except Exception as e: st.error(f"Error: {e}")
                 
@@ -462,7 +479,6 @@ elif app_mode == "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)":
     st.header("💬 AI Study Assistant")
     session_id = st.session_state.current_session_id
     
-    # Guest email tracking to fix disappearing chat when creating audio[cite: 2]
     current_email = st.session_state.user_email if st.session_state.logged_in else f"guest_{session_id}"
     
     db_messages = get_chat_messages(session_id)
@@ -472,7 +488,6 @@ elif app_mode == "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)":
 
     if prompt := st.chat_input("നിങ്ങളുടെ സംശയം ചോദിക്കുക..."):
         st.chat_message("user").markdown(prompt)
-        # Now automatically saves the state even if not logged in
         save_chat_message(session_id, current_email, "user", prompt)
 
         gemini_history = [{"role": "model" if r == "assistant" else "user", "parts": [c]} for r, c in db_messages]
@@ -486,7 +501,6 @@ elif app_mode == "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)":
                 save_chat_message(session_id, current_email, "assistant", response.text)
             except Exception as e: st.error(f"Error: {e}")
 
-    # Show smart actions for the LAST AI response
     if st.session_state.out_5:
         render_smart_actions(st.session_state.out_5, "5")
 
