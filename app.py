@@ -62,7 +62,7 @@ THEMES = {
     "4. Classic Light": {"bg": "#F8FAFC", "card": "#FFFFFF", "text": "#0F172A", "accent": "#2563EB", "border": "#E2E8F0"},
 }
 
-# 3. Extensive Voice Dictionary (English & Malayalam)
+# 3. Extensive Voice Dictionary
 VOICES = {
     "മലയാളം - ശോഭന (Malayalam Female)": "ml-IN-SobhanaNeural",
     "മലയാളം - മിഥുൻ (Malayalam Male)": "ml-IN-MidhunNeural",
@@ -98,23 +98,21 @@ if "current_session_id" not in st.session_state:
 if "selected_voice" not in st.session_state:
     st.session_state.selected_voice = "ml-IN-SobhanaNeural"
 
-# Persistent Login Check (Auto-Login from Cookie)
+# Persistent Login Check
 if not st.session_state.logged_in:
     cookie_email = controller.get('user_email')
     if cookie_email:
         st.session_state.logged_in = True
         st.session_state.user_email = cookie_email
 
-# Output states for ALL 8 features to prevent text from disappearing
 for i in range(8):
     if f"out_{i}" not in st.session_state:
         st.session_state[f"out_{i}"] = ""
 
-# Navigation State
 if "app_mode_select" not in st.session_state:
     st.session_state.app_mode_select = "1. പാഠപുസ്തകം / നോട്ട്സ് (PDF Chat)"
 
-# --- Helper Functions (Downloads & Audio) ---
+# --- Helper Functions ---
 def create_docx(text):
     doc = docx.Document()
     doc.add_heading('SSLC AI Smart Notes', 0)
@@ -147,7 +145,6 @@ def create_audio_improved(text, voice):
         return audio_bytes
     except Exception: return None
 
-# The Universal Smart Actions Toolbar
 def render_smart_actions(text_content, feature_id):
     st.markdown("---")
     st.markdown(f"### 🛠️ സേവ് ചെയ്യാം (Save & Share)")
@@ -163,7 +160,6 @@ def render_smart_actions(text_content, feature_id):
     with col4:
         with st.expander("📝 കോപ്പി ചെയ്യാൻ"): st.code(text_content, language='text')
 
-# PDF Helpers
 def extract_text_from_pdf(pdf_file):
     reader = pypdf.PdfReader(pdf_file)
     return "".join([page.extract_text() or "" for page in reader.pages])
@@ -190,11 +186,11 @@ except:
     api_key_to_use = MY_GEMINI_API_KEY
 
 if api_key_to_use == "AIzaSyB-YOUR_API_KEY_HERE":
-    st.error("⚠️ കോഡിൽ API Key നൽകിയിട്ടില്ല! app.py ഫയലിൽ വരി നമ്പർ 151-ൽ നിന്റെ API Key നൽകുക.")
+    st.error("⚠️ കോഡിൽ API Key നൽകിയിട്ടില്ല! app.py ഫയലിൽ നിന്റെ API Key നൽകുക.")
     st.stop()
 
 genai.configure(api_key=api_key_to_use)
-model = genai.GenerativeModel('gemini-1.5-flash') # Updated to a valid latest model
+model = genai.GenerativeModel('gemini-1.5-flash') 
 
 
 # --- Sidebar Setup ---
@@ -217,7 +213,6 @@ with st.sidebar.expander("🎨 Appearance (Theme)"):
     selected_theme_name = st.selectbox("തീം തിരഞ്ഞെടുക്കുക:", list(THEMES.keys()))
     current_theme = THEMES[selected_theme_name]
 
-# --- NEW: Voice Selection & Preview ---
 st.sidebar.markdown("---")
 st.sidebar.title("🔊 Audio Settings")
 selected_voice_name = st.sidebar.selectbox("വോയിസ് തിരഞ്ഞെടുക്കുക:", list(VOICES.keys()))
@@ -251,20 +246,24 @@ else:
         st.rerun()
         
     st.sidebar.markdown("### 🕒 നിന്റെ ചാറ്റുകൾ")
-    if st.sidebar.button("➕ New Chat", use_container_width=True):
+    
+    # --- FIXED ERROR SECTION: Using Callbacks ---
+    def start_new_chat():
         st.session_state.current_session_id = str(uuid.uuid4())
-        # FIXED BUG: Corrected to match the actual menu option string
-        st.session_state.app_mode_select = "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)" 
-        st.rerun()
+        st.session_state.app_mode_select = "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)"
+        
+    def load_existing_chat(sess_id):
+        st.session_state.current_session_id = sess_id
+        st.session_state.app_mode_select = "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)"
+
+    # Button with on_click callback
+    st.sidebar.button("➕ New Chat", use_container_width=True, on_click=start_new_chat)
 
     sessions = get_chat_sessions(st.session_state.user_email)
     if sessions:
         for sess_id, title in sessions:
-            if st.sidebar.button(f"💬 {title}", key=f"btn_{sess_id}", use_container_width=True):
-                st.session_state.current_session_id = sess_id
-                # FIXED BUG: Corrected to match the actual menu option string
-                st.session_state.app_mode_select = "6. യഥാർത്ഥ ചാറ്റ് (Chatbot UI)" 
-                st.rerun()
+            st.sidebar.button(f"💬 {title}", key=f"btn_{sess_id}", use_container_width=True, on_click=load_existing_chat, args=(sess_id,))
+    # ---------------------------------------------
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("<p style='text-align: center; color: gray;'>Created by <b>Vishnu</b> 💻</p>", unsafe_allow_html=True)
@@ -292,7 +291,6 @@ if app_mode == "1. പാഠപുസ്തകം / നോട്ട്സ് (PD
     upload_method = st.radio("എങ്ങനെയാണ് നോട്ട്സ് നൽകുന്നത്?", ("വേണ്ട (ചോദ്യം മാത്രം)", "PDF അപ്‌ലോഡ് ചെയ്യുക", "Google Drive ലിങ്ക് നൽകുക"))
     
     if upload_method == "PDF അപ്‌ലോഡ് ചെയ്യുക":
-        # UPDATED: Allows up to 20 multiple files
         uploaded_pdfs = st.file_uploader("📄 പാഠപുസ്തകം (PDF) - Max 20:", type=["pdf"], accept_multiple_files=True)
         if uploaded_pdfs: 
             for pdf in uploaded_pdfs[:20]:
@@ -326,12 +324,11 @@ if app_mode == "1. പാഠപുസ്തകം / നോട്ട്സ് (PD
 elif app_mode == "2. ചിത്രങ്ങൾ നൽകി പഠിക്കാം (Image Analysis)":
     st.header("📷 ചിത്രങ്ങൾ നൽകി പഠിക്കാം")
     
-    # UPDATED: Allows up to 20 images
     uploaded_files = st.file_uploader("ചിത്രങ്ങൾ അപ്‌ലോഡ് ചെയ്യുക (Max 20)", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
     
     if uploaded_files:
         images_to_process = []
-        cols = st.columns(4) # To show thumbnail previews properly
+        cols = st.columns(4) 
         for idx, file in enumerate(uploaded_files[:20]):
             img = Image.open(file)
             images_to_process.append(img)
@@ -383,7 +380,7 @@ elif app_mode == "3. AI Mock Test (ക്വിസ്)":
         render_smart_actions(st.session_state.out_2, "2")
 
 # =============================================================================
-# 3. Voice Input (Live Speech-to-Text Setup)
+# 3. Voice Input
 # =============================================================================
 elif app_mode == "4. വോയിസ് ഇൻപുട്ട് (സംസാരിച്ച് ചോദിക്കാം)":
     st.header("🎙️ സംസാരിച്ച് ചോദ്യം ചോദിക്കാം")
