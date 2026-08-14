@@ -85,6 +85,50 @@ VOICES = {
     "English (Canada) - Liam (Male)": "en-CA-LiamNeural",
     "English (South Africa) - Leah (Female)": "en-ZA-LeahNeural",
     "English (South Africa) - Luke (Male)": "en-ZA-LukeNeural"
+{
+  "Azure Neural": {
+    "മലയാളം - ശോഭന (Female)": "ml-IN-SobhanaNeural",
+    "മലയാളം - മിഥുൻ (Male)": "ml-IN-MidhunNeural"
+  },
+
+  "Google Cloud TTS": {
+    "മലയാളം - Standard A (Female)": "ml-IN-Standard-A",
+    "മലയാളം - Standard B (Male)": "ml-IN-Standard-B", 
+    "മലയാളം - Standard C (Female)": "ml-IN-Standard-C",
+    "മലയാളം - Standard D (Male)": "ml-IN-Standard-D",
+    "മലയാളം - Wavenet A (Female)": "ml-IN-Wavenet-A",
+    "മലയാളം - Wavenet B (Male)": "ml-IN-Wavenet-B",
+    "മലയാളം - Wavenet C (Female)": "ml-IN-Wavenet-C",
+    "മലയാളം - Wavenet D (Male)": "ml-IN-Wavenet-D"
+  },
+
+  "Amazon Polly": {
+    "മലയാളം - Aditi (Female)": "Aditi", 
+    "മലയാളം - Raveena (Female)": "Raveena"
+  },
+
+  "ElevenLabs Multilingual": {
+    "മലയാളം - Bella (Female)": "Bella",
+    "മലയാളം - Antoni (Male)": "Antoni",
+    "മലയാളം - Elli (Female)": "Elli",
+    "മലയാളം - Josh (Male)": "Josh",
+    "മലയാളം - Rachel (Female)": "Rachel"
+  },
+
+  "IBM Watson": {
+    "മലയാളം - en-US_MichaelV3Voice (Male)": "en-US_MichaelV3Voice"
+  },
+
+  "Murf.ai": {
+    "മലയാളം - Ananya (Female)": "Ananya",
+    "മലയാളം - Arjun (Male)": "Arjun",
+    "മലയാളം - Kavya (Female)": "Kavya"
+  },
+
+  "Play.ht": {
+    "മലയാളം - Aadhya (Female)": "ml-IN-Aadhya",
+    "മലയാളം - Arnav (Male)": "ml-IN-Arnav"
+  }
 }
 
 # --- Session States ---
@@ -190,7 +234,7 @@ if api_key_to_use == "AIzaSyB-YOUR_API_KEY_HERE":
     st.stop()
 
 genai.configure(api_key=api_key_to_use)
-model = genai.GenerativeModel('gemini-1.5-flash') 
+model = genai.GenerativeModel('gemini-3.5-flash') 
 
 
 # --- Sidebar Setup ---
