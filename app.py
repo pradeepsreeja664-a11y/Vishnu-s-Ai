@@ -84,15 +84,7 @@ VOICES = {
     "English (Canada) - Clara (Female)": "en-CA-ClaraNeural",
     "English (Canada) - Liam (Male)": "en-CA-LiamNeural",
     "English (South Africa) - Leah (Female)": "en-ZA-LeahNeural",
-    "English (South Africa) - Luke (Male)": "en-ZA-LukeNeural"
-}
-{
-  "Azure Neural": {
-    "മലയാളം - ശോഭന (Female)": "ml-IN-SobhanaNeural",
-    "മലയാളം - മിഥുൻ (Male)": "ml-IN-MidhunNeural"
-  },
-
-  "Google Cloud TTS": {
+    "English (South Africa) - Luke (Male)": "en-ZA-LukeNeural",
     "മലയാളം - Standard A (Female)": "ml-IN-Standard-A",
     "മലയാളം - Standard B (Male)": "ml-IN-Standard-B", 
     "മലയാളം - Standard C (Female)": "ml-IN-Standard-C",
@@ -100,36 +92,20 @@ VOICES = {
     "മലയാളം - Wavenet A (Female)": "ml-IN-Wavenet-A",
     "മലയാളം - Wavenet B (Male)": "ml-IN-Wavenet-B",
     "മലയാളം - Wavenet C (Female)": "ml-IN-Wavenet-C",
-    "മലയാളം - Wavenet D (Male)": "ml-IN-Wavenet-D"
-  },
-
-  "Amazon Polly": {
-    "മലയാളം - Aditi (Female)": "Aditi", 
-    "മലയാളം - Raveena (Female)": "Raveena"
-  },
-
-  "ElevenLabs Multilingual": {
+    "മലയാളം - Wavenet D (Male)": "ml-IN-Wavenet-D",
+   "മലയാളം - Aditi (Female)": "Aditi", 
+    "മലയാളം - Raveena (Female)": "Raveena",
     "മലയാളം - Bella (Female)": "Bella",
     "മലയാളം - Antoni (Male)": "Antoni",
     "മലയാളം - Elli (Female)": "Elli",
     "മലയാളം - Josh (Male)": "Josh",
-    "മലയാളം - Rachel (Female)": "Rachel"
-  },
-
-  "IBM Watson": {
-    "മലയാളം - en-US_MichaelV3Voice (Male)": "en-US_MichaelV3Voice"
-  },
-
-  "Murf.ai": {
+    "മലയാളം - Rachel (Female)": "Rachel",
+    "മലയാളം - en-US_MichaelV3Voice (Male)": "en-US_MichaelV3Voice",
     "മലയാളം - Ananya (Female)": "Ananya",
     "മലയാളം - Arjun (Male)": "Arjun",
-    "മലയാളം - Kavya (Female)": "Kavya"
-  },
-
-  "Play.ht": {
+    "മലയാളം - Kavya (Female)": "Kavya",
     "മലയാളം - Aadhya (Female)": "ml-IN-Aadhya",
     "മലയാളം - Arnav (Male)": "ml-IN-Arnav"
-  }
 }
 
 # --- Session States ---
