@@ -160,7 +160,7 @@ except:
     api_key_to_use = MY_GEMINI_API_KEY
 
 genai.configure(api_key=api_key_to_use)
-model = genai.GenerativeModel('gemini-1.5-pro-latest') 
+model = genai.GenerativeModel('gemini-3.7-flash') 
 
 # =============================================================================
 # 🎨 CUSTOM CSS (NEXORA Theme Match)
