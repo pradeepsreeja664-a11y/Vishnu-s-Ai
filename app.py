@@ -22,7 +22,7 @@ st.set_page_config(page_title=" Vishnu's SSLC AI Master 📚", page_icon="🎓",
 # ==========================================
 # 🔑 FREE GROQ API CONFIGURATION
 # ==========================================
-GROQ_API_KEY = "ഇവിടെ_നിങ്ങളുടെ_GROQ_API_KEY_നൽകുക"
+GROQ_API_KEY = "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"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "llama-3.3-70b-versatile"  # Free & Fast Model
 
