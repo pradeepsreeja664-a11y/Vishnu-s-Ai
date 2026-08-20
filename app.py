@@ -153,14 +153,25 @@ def download_gdrive_pdf(url):
 # ==========================================
 # 🔑 API KEY CONFIGURATION
 # ==========================================
-MY_GEMINI_API_KEY = "AIzaSyB-YOUR_API_KEY_HERE" # <--- നിന്റെ API Key ഇവിടെ പേസ്റ്റ് ചെയ്യുക
-try:
-    api_key_to_use = st.secrets.get("GEMINI_API_KEY", MY_GEMINI_API_KEY)
-except:
-    api_key_to_use = MY_GEMINI_API_KEY
+import requests
 
-genai.configure(api_key=api_key_to_use)
-model = genai.GenerativeModel('gemini-3.7-flash') 
+response = requests.post(
+    'https://api.aimlapi.com/v1/chat/completions',
+    headers={
+        'Authorization': 'Bearer <YOUR_AIMLAPI_KEY>',
+        'Content-Type': 'application/json',
+    },
+    json={
+      "model": "openai/gpt-5-5",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Give me three impressive things I can build with an API that serves 1000+ AI models."
+        }
+      ]
+    },
+)
+print(response.json())
 
 # =============================================================================
 # 🎨 CUSTOM CSS (NEXORA Theme Match)
