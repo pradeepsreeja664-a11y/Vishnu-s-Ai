@@ -18,16 +18,17 @@ import uuid
 from streamlit_cookies_controller import CookieController
 
 # 1. Page Configuration
-st.set_page_config(page_title="SSLC AI Master 📚", page_icon="🎓", layout="wide", initial_sidebar_state="expanded")
-
-# 2. AIMLAPI Configuration
-AIMLAPI_KEY = "5c545224ec6c18b8b679f3a2212184e2"
-AIMLAPI_URL = "https://api.aimlapi.com/v1/chat/completions"
-DEFAULT_MODEL = "openai/gpt-5-5"
+st.set_page_config(page_title=" Vishnu's SSLC AI Master 📚", page_icon="🎓", layout="wide", initial_sidebar_state="expanded")
+# ==========================================
+# 🔑 FREE GROQ API CONFIGURATION
+# ==========================================
+GROQ_API_KEY = "ഇവിടെ_നിങ്ങളുടെ_GROQ_API_KEY_നൽകുക"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"  # Free & Fast Model
 
 def call_aimlapi(messages, model=DEFAULT_MODEL, temperature=0.7):
     headers = {
-        "Authorization": f"Bearer {AIMLAPI_KEY}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     payload = {
@@ -36,7 +37,7 @@ def call_aimlapi(messages, model=DEFAULT_MODEL, temperature=0.7):
         "temperature": temperature
     }
     try:
-        response = requests.post(AIMLAPI_URL, headers=headers, json=payload, timeout=60)
+        response = requests.post(GROQ_URL, headers=headers, json=payload, timeout=60)
         if response.status_code == 200:
             res_json = response.json()
             return res_json["choices"][0]["message"]["content"]
@@ -44,6 +45,7 @@ def call_aimlapi(messages, model=DEFAULT_MODEL, temperature=0.7):
             return f"API Error ({response.status_code}): {response.text}"
     except Exception as e:
         return f"Request Error: {str(e)}"
+
 
 # 3. Cookie Controller for Persistent Login
 controller = CookieController()
