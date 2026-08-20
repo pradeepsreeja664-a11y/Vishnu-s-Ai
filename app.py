@@ -24,7 +24,7 @@ st.set_page_config(page_title=" Vishnu's SSLC AI Master 📚", page_icon="🎓",
 # ==========================================
 GROQ_API_KEY = "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"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_MODEL = "llama-3.3-70b-versatile"  # Free & Fast Model
+DEFAULT_MODEL = "openai/gpt-oss-120b"  # Free & Fast Model
 
 def call_aimlapi(messages, model=DEFAULT_MODEL, temperature=0.7):
     headers = {
